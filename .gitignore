@@ -1,65 +1,26 @@
-# Dependencies
-node_modules/
-vendor/
-.pnp/
-.pnp.js
-
 # Python
 __pycache__/
 *.py[cod]
-.venv/
-venv/
-env/
-*.egg-info/
 .pytest_cache/
+.mypy_cache/
 .ruff_cache/
-
-# Builds
-dist/
-build/
-out/
-.next/
-.nuxt/
-.svelte-kit/
-target/
-*.tsbuildinfo
-
-# Secrets & local config
+.venv/
 .env
-.env.*
-!.env.example
-*.pem
-*.key
-secrets.json
 
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# Generated geospatial cache
+backend/cache/*
+!backend/cache/.gitkeep
+*.parquet
+*.geojson
+!backend/data/demo_fixture.geojson
 
-# Editors & OS
-.vscode/
-!.vscode/extensions.json
-.idea/
-*.swp
+# Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+*.local
+
+# Editors and OS
 .DS_Store
-Thumbs.db
-desktop.ini
-
-# Databases
-*.sqlite
-*.sqlite3
-*.db
-
-# Coverage
-coverage/
-.nyc_output/
-htmlcov/
-.coverage
-
-# Lane B: raw fetch caches are large and regenerable -- don't commit.
-# The computed deliverables (segments.parquet, shadows_*.geojson) DO get
-# committed so Lane C isn't blocked on re-running the pipeline.
-backend/cache/*.pkl
+.vscode/
+.idea/

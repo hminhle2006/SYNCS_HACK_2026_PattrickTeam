@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from shapely.strtree import STRtree
 
-CRS_METRES = "EPSG:7856"
+from backend.config import PROJECTED_CRS as CRS_METRES  # Lane A owns the value
 
 
 def segment_exposure(
@@ -90,3 +90,14 @@ def graph_to_segments(graph) -> gpd.GeoDataFrame:
                 ("" if v is None else str(v))
             )
     return segments
+
+
+def build_segments_table(*args, **kwargs):
+    """Re-exported so the symbol lives where Lane A's stub declared it.
+
+    The implementation is in backend/geo/pipeline.py; importing it lazily
+    keeps exposure.py free of a circular import.
+    """
+    from backend.geo.pipeline import build_segments_table as _impl
+
+    return _impl(*args, **kwargs)

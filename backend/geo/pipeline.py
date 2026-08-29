@@ -16,14 +16,20 @@ import geopandas as gpd
 import pandas as pd
 from shapely.ops import unary_union
 
-from backend.config import BBOX, CENTRE_LAT, CENTRE_LON, CRS_METRES, HOUR_END, HOUR_START
+from backend.config import (
+    BBOX, CACHE_DIR, DEMO_DATE, MAX_HOUR, MIN_HOUR, PROJECTED_CRS,
+)
 from backend.data import fetch
 from backend.geo.exposure import graph_to_segments, segment_exposure
 from backend.geo.shadows import cast_shadows, tree_shadows
 from backend.geo.solar import hours_of_day, solar_position_series
 
 log = logging.getLogger(__name__)
-CACHE_DIR = Path(__file__).resolve().parents[1] / "cache"
+# Centre of the bbox, for solar position. The study area is small enough
+# that one position for the whole box sits well inside the error the
+# height data already carries.
+CENTRE_LON = (BBOX[0] + BBOX[2]) / 2.0
+CENTRE_LAT = (BBOX[1] + BBOX[3]) / 2.0
 
 
 def combined_shadows(buildings, trees, azimuth_deg: float, elevation_deg: float):
@@ -43,8 +49,8 @@ def combined_shadows(buildings, trees, azimuth_deg: float, elevation_deg: float)
             parts.extend(t.geometry)
 
     if not parts:
-        return gpd.GeoDataFrame({"geometry": []}, crs=CRS_METRES, geometry="geometry")
-    return gpd.GeoDataFrame({"geometry": [unary_union(parts)]}, crs=CRS_METRES)
+        return gpd.GeoDataFrame({"geometry": []}, crs=PROJECTED_CRS, geometry="geometry")
+    return gpd.GeoDataFrame({"geometry": [unary_union(parts)]}, crs=PROJECTED_CRS)
 
 
 def build_segments_table(
@@ -53,7 +59,7 @@ def build_segments_table(
     write_geojson: bool = True,
 ) -> gpd.GeoDataFrame:
     """Walkable segments with an exposed fraction for every hour 06..19."""
-    when = when or date_cls(2026, 8, 29)
+    when = when or date_cls.fromisoformat(DEMO_DATE)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
 
@@ -66,7 +72,7 @@ def build_segments_table(
         time.time() - t0, len(segments), len(buildings), len(trees),
     )
 
-    stamps = hours_of_day(when, start=HOUR_START, end=HOUR_END)
+    stamps = hours_of_day(when, start=MIN_HOUR, end=MAX_HOUR)
     azimuths, elevations = solar_position_series(CENTRE_LAT, CENTRE_LON, stamps)
 
     for stamp, az, el in zip(stamps, azimuths, elevations):
@@ -107,3 +113,19 @@ def handoff_readout(segments: gpd.GeoDataFrame) -> str:
     if len(spread) == 3 and max(spread) - min(spread) < 0.02:
         lines.append("  WARNING: these are nearly identical. Suspect solar geometry.")
     return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    import sys
+    import warnings
+
+    warnings.filterwarnings("ignore")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", stream=sys.stdout)
+
+    from backend.data import fetch as _fetch
+
+    table = build_segments_table()
+    print()
+    print(handoff_readout(table), flush=True)
+    print()
+    print(_fetch.fallback_report(), flush=True)

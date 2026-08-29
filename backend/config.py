@@ -1,25 +1,26 @@
-"""Shared constants for Lane B.
+"""Shared Shadeney configuration. Lane A owns this file."""
+from pathlib import Path
 
-If Lane A's CLAUDE.md eventually defines any of these, CLAUDE.md wins and this
-file defers to it.
-"""
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CACHE_DIR = PROJECT_ROOT / "backend" / "cache"
 
-# Sydney CBD: Circular Quay down to Central, Darling Harbour across to the
-# Domain. Roughly 1.85 km east-west by 3.0 km north-south. Hyde Park sits
-# inside it, which matters -- it is the one place tree canopy visibly drives
-# the routing, and it makes the demo legible.
-#
-# Order is (west, south, east, north) == (left, bottom, right, top), which is
-# what osmnx 2.x expects.
-BBOX = (151.1990, -33.8840, 151.2190, -33.8570)
+APP_NAME = "Shadeney"
+APP_VERSION = "0.1.0"
+TIMEZONE = "Australia/Sydney"
+DEMO_DATE = "2026-08-29"
 
-# Centroid, for solar position. The box is small enough that one position for
-# the whole area is well inside the error the height data already carries.
-CENTRE_LAT = -33.8705
-CENTRE_LON = 151.2090
+# Bounding-box order: west, south, east, north.
+BBOX = (151.1690, -33.9030, 151.2110, -33.8660)
 
-CRS_WGS84 = "EPSG:4326"
-CRS_METRES = "EPSG:7856"
+# Demo journey: Redfern Station area to the University of Sydney campus.
+DEMO_ORIGIN = {"lat": -33.8913, "lon": 151.1980}
+DEMO_DESTINATION = {"lat": -33.8870, "lon": 151.1902}
+DEMO_TIME = 14
 
-HOUR_START = 6
-HOUR_END = 19
+GEOGRAPHIC_CRS = "EPSG:4326"
+PROJECTED_CRS = "EPSG:7856"
+MIN_HOUR = 6
+MAX_HOUR = 19
+WALKING_SPEED_MPS = 1.35
+ALPHA = 3.0
+FRONTEND_ORIGIN = "http://localhost:5173"

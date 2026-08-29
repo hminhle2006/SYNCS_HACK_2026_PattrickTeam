@@ -10,14 +10,21 @@ import math
 
 import geopandas as gpd
 import numpy as np
+import shapely
+import shapely.affinity
 from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
 
-CRS_METRES = "EPSG:7856"
+from backend.config import PROJECTED_CRS as CRS_METRES  # Lane A owns the value
 
 # Below this the sun is skimming the horizon, shadow_len explodes towards
 # infinity, and the honest answer is "everything is in shade".
 MIN_ELEVATION_DEG = 3.0
+
+# Canopy discs are approximated with 16-gons (quad_segs=4). Visually
+# identical at map scale, a quarter of the vertices, and every downstream
+# union is proportionally cheaper.
+DEFAULT_CROWN_RADIUS_M = 4.0
 
 
 def shadow_offset(height_m, elevation_deg: float, azimuth_deg: float):
@@ -94,17 +101,17 @@ def cast_shadows(
     if exact:
         swept = [_swept(g, dx, dy) for g, dx, dy in zip(subset.geometry, dxs, dys)]
     else:
-        # Vectorised path: GeoSeries.translate handles the whole column at once,
-        # then convex_hull is likewise vectorised. Avoids a per-feature Python
-        # loop, which is where 14 hours x thousands of buildings falls over.
-        moved = gpd.GeoSeries(
-            [_translate(g, dx, dy) for g, dx, dy in zip(subset.geometry, dxs, dys)],
-            crs=CRS_METRES,
+        # shapely 2 is vectorised over numpy arrays of geometries, so union
+        # and convex_hull each run once in C across the whole column rather
+        # than once per feature in Python. Across 14 hours and thousands of
+        # footprints that is the difference between minutes and tens of them.
+        geoms = np.asarray(subset.geometry.values)
+        moved = np.array(
+            [shapely.affinity.translate(g, xoff=dx, yoff=dy)
+             for g, dx, dy in zip(geoms, dxs, dys)],
+            dtype=object,
         )
-        pairs = gpd.GeoSeries(
-            [unary_union([a, b]) for a, b in zip(subset.geometry, moved)], crs=CRS_METRES
-        )
-        swept = pairs.convex_hull
+        swept = shapely.convex_hull(shapely.union(geoms, moved))
 
     dissolved = unary_union(list(swept))
     return gpd.GeoDataFrame({"geometry": [dissolved]}, crs=CRS_METRES)
@@ -127,5 +134,7 @@ def tree_shadows(
         return gpd.GeoDataFrame({"geometry": []}, crs=CRS_METRES, geometry="geometry")
 
     discs = trees.copy()
-    discs["geometry"] = discs.geometry.buffer(discs[crown_col].fillna(4.0))
+    discs["geometry"] = discs.geometry.buffer(
+        discs[crown_col].fillna(DEFAULT_CROWN_RADIUS_M), quad_segs=4
+    )
     return cast_shadows(discs, azimuth_deg, elevation_deg, height_col=height_col)
