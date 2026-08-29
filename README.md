@@ -112,14 +112,16 @@ Known limitations for the first prototype:
 
 ## Team and contributions
 
-This table must be updated continuously and checked against Git history before submission.
-
 | Member | Role and contribution |
 |---|---|
-| Duc Anh Luong | Lane A: shared contracts, scaffold, integration pipeline, release coordination, README and pitch support |
-| Hieu Minh Le | TODO |
-| Team member 3 | TODO |
-| Team member 4 | TODO |
+| Duc Anh Luong | **Lane A — architecture and integration.** Shared API contract, cache format and file-ownership boundaries that let four branches merge without conflict. Study area and demo journey, pinned dependencies, and the integration harness that gates each lane's handoff. |
+| Hieu Minh Le | **Lane B — data and shadow geometry.** Source data acquisition (10,479 building footprints, 23,655 street trees, the walk network), typology-informed height estimation, solar position, shadow casting and per-segment sun exposure. Produced the 30,670-segment hourly exposure table the product runs on, parallelised the pipeline 19 min to 3, and added the live UV index and erythemal dose model. |
+| Tuan Minh Nguyen | **Lane C — routing and API.** Walk-graph builder, the shade-weighted cost function blending travel time against sun exposure, the Dijkstra search producing the fastest/coolest pair, and the FastAPI surface with its stable error contract. Routes return in ~170 ms over the full graph. |
+| Quang Minh Nguyen | **Lane D — frontend and interface design.** The entire UI: MapLibre map with both route overlays and live tree canopy, route comparison cards, UV dose panel, the time-of-day control, and the visual design language. |
+
+The demo video, pitch and project narrative were made collaboratively by all four members.
+
+We used AI coding assistance (Claude) throughout, most heavily in Lane B's geometry pipeline and Lane C's routing. Architecture, problem framing and final code were owned and reviewed by the members above. Some Lane C commits carry the author name "Claude" due to a misconfigured Git identity; Tuan Minh Nguyen is the author of that work.
 
 ## Credits and third-party material
 
