@@ -44,6 +44,26 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
 .place-options strong { color: #1d3936; font-size: 12.5px; font-weight: 700; }
 .place-options small { color: #6b827a; font-size: 11px; }
 .place-empty { padding: 8px 9px; color: #7b8f87; font-size: 11.5px; }
+.swap-button { display: inline-flex; gap: 5px; align-items: center; margin: -3px 0 7px auto; border: 0; border-radius: 7px; padding: 3px 8px; background: #eaf3ef; color: #1b6d60; font-size: 10.5px; font-weight: 700; }
+.swap-button:hover:not(:disabled) { background: #d9ece4; }
+.swap-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.swap-button:focus-visible { outline: 2px solid #2c8576; outline-offset: 2px; }
+
+.day-profile { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid #e8f0ec; }
+.profile-title { color: #607a71; font-size: 10px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase; }
+.profile-bars { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; align-items: end; height: 72px; }
+.profile-bar { display: grid; gap: 3px; height: 100%; padding: 0; border: 0; background: none; }
+.profile-track { display: flex; align-items: flex-end; justify-content: center; height: 58px; border-bottom: 1px solid #e4ece8; }
+.profile-fill { display: block; width: 100%; border-radius: 4px 4px 0 0; transition: height 260ms ease, background 260ms ease; }
+.profile-hour { color: #9aaaa3; font-size: 9.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.profile-bar:hover .profile-fill { filter: brightness(1.06); }
+.profile-bar.is-current .profile-fill { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #17564f; }
+.profile-bar.is-current .profile-hour { color: #17564f; }
+.profile-bar.is-best .profile-fill { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2f9c7e; }
+.profile-bar.is-best.is-current .profile-fill { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #17564f, 0 0 0 6px #2f9c7e; }
+.profile-bar:focus-visible { outline: 2px solid #2c8576; outline-offset: 2px; border-radius: 5px; }
+.profile-caption { margin: 7px 0 0; color: #6f837b; font-size: 11px; }
+
 .search-status { display: flex; gap: 7px; align-items: center; margin: 11px 0 0; padding-top: 10px; border-top: 1px solid #e6eeea; color: #4f6a61; font-size: 11.5px; font-weight: 600; line-height: 1.35; }
 .search-spinner { width: 11px; height: 11px; flex: 0 0 auto; border: 2px solid #cadcd4; border-radius: 50%; border-top-color: #2c8576; }
 .search-status.is-busy .search-spinner { animation: search-spin 780ms linear infinite; }
