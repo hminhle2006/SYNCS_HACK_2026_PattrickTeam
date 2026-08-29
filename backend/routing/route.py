@@ -39,11 +39,13 @@ def route(
     destination: tuple[float, float],
     hour: int,
     shade_preference: float,
+    alpha: float | None = None,
 ) -> tuple[RouteResult, RouteResult]:
     """Compute the fastest and coolest routes between two (lat, lon) points.
 
     Always returns both: fastest is shade_preference=0, coolest is the
     requested preference. Raises RoutingError for the contract 422 cases.
+    alpha overrides the shared ALPHA only for tuning sweeps.
     """
     for label, (lat, lon) in (("origin", origin), ("destination", destination)):
         west, south, east, north = BBOX
@@ -65,8 +67,8 @@ def route(
         )
 
     exposure_key = f"exposed_frac_{hour:02d}"
-    fastest = _best_route(graph, source, target, exposure_key, 0.0)
-    coolest = _best_route(graph, source, target, exposure_key, shade_preference)
+    fastest = _best_route(graph, source, target, exposure_key, 0.0, alpha)
+    coolest = _best_route(graph, source, target, exposure_key, shade_preference, alpha)
     if fastest.coordinates == coolest.coordinates:
         logger.warning(
             "coolest route identical to fastest (hour=%s, shade_preference=%s) "
@@ -83,10 +85,11 @@ def _best_route(
     target: int,
     exposure_key: str,
     shade_preference: float,
+    alpha: float | None = None,
 ) -> RouteResult:
     def weight(u: int, v: int, keyed: dict) -> float:
         return min(
-            edge_cost(data["length_m"], data[exposure_key], shade_preference)
+            edge_cost(data["length_m"], data[exposure_key], shade_preference, alpha)
             for data in keyed.values()
         )
 
@@ -104,7 +107,9 @@ def _best_route(
     for u, v in zip(nodes, nodes[1:]):
         data = min(
             graph[u][v].values(),
-            key=lambda d: edge_cost(d["length_m"], d[exposure_key], shade_preference),
+            key=lambda d: edge_cost(
+                d["length_m"], d[exposure_key], shade_preference, alpha
+            ),
         )
         distance_m += data["length_m"]
         exposed_m += data["length_m"] * data[exposure_key]
