@@ -177,3 +177,60 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
   background: #157167;
   color: #ffffff;
 }
+
+/* ---- phones ----------------------------------------------------------- */
+/* The layout was built for a laptop and has no breakpoints: at 375px the
+   panel drops to ~255px of usable width while the route cards stay a
+   two-column grid, so the comparison text wraps into a mess. Stack them,
+   reclaim the horizontal padding, and shrink the chrome so the map keeps
+   most of the screen. */
+
+@media (max-width: 560px) {
+  .navigation-panel {
+    width: calc(100vw - 20px);
+    bottom: 14px;
+    padding: 10px 14px 12px;
+    border-radius: 18px;
+  }
+
+  /* One card per row -- side by side there is not enough width for
+     "1 min longer · 38% less sun" to sit on one line. */
+  .route-cards {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .sheet-heading { margin-bottom: 10px; }
+  .sheet-heading h2 { font-size: 27px; }
+  .sheet-handle { margin-bottom: 9px; }
+
+  .app-header { padding: 8px 12px; }
+  .app-header h1 { font-size: 20px; }
+  .app-brand-kicker { font-size: 9px; letter-spacing: 0.12em; }
+
+  /* The destination card is reference information, not the demo. Let the map
+     have that space back. */
+  .destination-card {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .time-scrubber { margin-top: 0.7rem; padding: 0.6rem 0.75rem 0.5rem; }
+  .scrubber-head strong { font-size: 0.95rem; }
+
+  /* nowrap pushes this off a narrow screen. */
+  .map-credit {
+    white-space: normal;
+    width: calc(100vw - 24px);
+    font-size: 9px;
+    line-height: 1.3;
+  }
+
+  .route-key { font-size: 11px; gap: 8px; }
+}
+
+/* Small phones: the destination card costs more than it gives. */
+@media (max-width: 400px) {
+  .destination-card { display: none; }
+}

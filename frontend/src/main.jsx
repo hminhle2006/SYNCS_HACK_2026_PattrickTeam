@@ -4,7 +4,14 @@ import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 
-const API_BASE_URL = "http://localhost:8000";
+// Derived from whatever host served the page, not hardcoded. On a laptop that
+// resolves to localhost; on a phone hitting the laptop's LAN address it
+// resolves to that same address. Hardcoding "localhost" breaks the phone
+// silently -- there, localhost is the PHONE, so every call fails and the UI
+// falls back to canned demo numbers with only a small grey warning.
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ??
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 const DEMO_ORIGIN = { lat: -33.8913, lon: 151.198 };
 const DEMO_DESTINATION = { lat: -33.887, lon: 151.1902 };
 const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";

@@ -70,7 +70,16 @@ app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
 # falls back to hardcoded demo numbers: the app looks like it works while
 # showing fiction. Matching any loopback port removes that whole failure mode.
 # This is a localhost-only pattern, so it grants nothing to a remote origin.
-LOCALHOST_ORIGIN_PATTERN = r"http://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
+# Loopback plus RFC1918 private ranges, so a phone on the same Wi-Fi can reach
+# the API at the laptop's LAN address. Still refuses public origins.
+LOCALHOST_ORIGIN_PATTERN = (
+    r"http://("
+    r"localhost|127\.0\.0\.1|\[::1\]"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+    r")(:\d+)?"
+)
 
 app.add_middleware(
     CORSMiddleware,
