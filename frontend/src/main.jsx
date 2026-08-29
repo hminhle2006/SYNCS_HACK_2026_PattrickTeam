@@ -4,12 +4,30 @@ import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 
-const API_BASE_URL = "http://localhost:8000";
-const DEMO_ORIGIN = { lat: -33.8913, lon: 151.198 };
-const DEMO_DESTINATION = { lat: -33.887, lon: 151.1902 };
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
-const emptyFeatures = { type: "FeatureCollection", features: [] };
+// Landmarks inside the exposure cache's bounding box. The cache covers
+// Annandale/Glebe through Newtown and Redfern to the western CBD, so anything
+// outside it would come back OUTSIDE_DEMO_AREA.
+const PLACES = [
+  { id: "redfern", name: "Redfern Station", detail: "Lawson St, Redfern", lat: -33.8913, lon: 151.198 },
+  { id: "usyd", name: "University of Sydney", detail: "Camperdown campus", lat: -33.887, lon: 151.1902 },
+  { id: "victoria-park", name: "Victoria Park", detail: "Broadway, Camperdown", lat: -33.8889, lon: 151.1938 },
+  { id: "broadway", name: "Broadway Shopping Centre", detail: "Bay St, Glebe", lat: -33.8836, lon: 151.1946 },
+  { id: "seymour", name: "Seymour Centre", detail: "City Rd, Chippendale", lat: -33.888, lon: 151.193 },
+  { id: "carriageworks", name: "Carriageworks", detail: "Wilson St, Eveleigh", lat: -33.8972, lon: 151.1856 },
+  { id: "newtown", name: "Newtown Station", detail: "King St, Newtown", lat: -33.8983, lon: 151.1795 },
+  { id: "camperdown-park", name: "Camperdown Memorial Rest Park", detail: "Newtown", lat: -33.8905, lon: 151.178 },
+  { id: "rpa", name: "Royal Prince Alfred Hospital", detail: "Missenden Rd, Camperdown", lat: -33.8895, lon: 151.181 },
+  { id: "erskineville", name: "Erskineville Station", detail: "Erskineville Rd", lat: -33.902, lon: 151.1857 },
+  { id: "prince-alfred-park", name: "Prince Alfred Park", detail: "Surry Hills", lat: -33.889, lon: 151.204 },
+  { id: "central", name: "Central Station", detail: "Eddy Ave, Haymarket", lat: -33.8832, lon: 151.207 },
+  { id: "harold-park", name: "Harold Park / Tramsheds", detail: "Forest Lodge", lat: -33.883, lon: 151.179 },
+];
+
+const DEFAULT_ORIGIN = PLACES[0];
+const DEFAULT_DESTINATION = PLACES[1];
 
 // The shade model runs 06:00-19:00, but at 06, 18 and 19 the sun is BELOW the
 // horizon in Sydney, so every segment is fully shaded and both routes score
@@ -43,17 +61,29 @@ function formatMinutes(seconds) {
   return `${Math.max(1, Math.round(seconds / 60))} min`;
 }
 
-function demoRouteResponse(hour) {
-  const intensity = 1 - Math.min(Math.abs(hour - 14) / 8, 0.72);
-  const reduction = Math.round(42 + intensity * 29);
-  const addedTime = Math.round(150 + intensity * 110);
+function shadeLabel(preference) {
+  if (preference <= 0.15) return "Speed first";
+  if (preference <= 0.45) return "Slight preference for shade";
+  if (preference <= 0.75) return "Balanced";
+  if (preference < 1) return "Strong preference for shade";
+  return "Shade at any cost";
+}
+
+// Offline stand-in, scaled from the measured demo journey (1070 m / 356 m in sun
+// versus 1113 m / 220 m) so the fallback can never overclaim what the real
+// model produces. Shown only when the API is unreachable, and labelled as such.
+function demoRouteResponse(hour, shadePreference) {
+  const daylightWeight = 1 - Math.min(Math.abs(hour - 14) / 8, 0.72);
+  const reduction = Math.round(8 + daylightWeight * shadePreference * 33);
+  const addedTime = Math.round(12 + daylightWeight * shadePreference * 50);
+  const fastestExposed = 356 * (0.45 + daylightWeight * 0.55);
   return {
     routes: [
-      { type: "fastest", geometry: { type: "LineString", coordinates: [[151.198, -33.8913], [151.1962, -33.89065], [151.19415, -33.8895], [151.19215, -33.8879], [151.1902, -33.887]] }, distance_m: 890, duration_s: 720, exposed_m: 630, exposed_frac: 0.71 },
-      { type: "coolest", geometry: { type: "LineString", coordinates: [[151.198, -33.8913], [151.19745, -33.8898], [151.19625, -33.88825], [151.19465, -33.88725], [151.1927, -33.88655], [151.1902, -33.887]] }, distance_m: 1110, duration_s: 720 + addedTime, exposed_m: 630 * (1 - reduction / 100), exposed_frac: 0.71 * (1 - reduction / 100) },
+      { type: "fastest", geometry: { type: "LineString", coordinates: [[151.198, -33.8913], [151.1962, -33.89065], [151.19415, -33.8895], [151.19215, -33.8879], [151.1902, -33.887]] }, distance_m: 1070, duration_s: 793, exposed_m: fastestExposed, exposed_frac: fastestExposed / 1070 },
+      { type: "coolest", geometry: { type: "LineString", coordinates: [[151.198, -33.8913], [151.19745, -33.8898], [151.19625, -33.88825], [151.19465, -33.88725], [151.1927, -33.88655], [151.1902, -33.887]] }, distance_m: 1113, duration_s: 793 + addedTime, exposed_m: fastestExposed * (1 - reduction / 100), exposed_frac: (fastestExposed * (1 - reduction / 100)) / 1113 },
     ],
-    comparison: { extra_distance_m: 220, extra_duration_s: addedTime, exposure_reduction_m: 630 * reduction / 100, exposure_reduction_pct: reduction },
-    meta: { hour, shade_preference: 0.8, timezone: "Australia/Sydney" },
+    comparison: { extra_distance_m: 43, extra_duration_s: addedTime, exposure_reduction_m: fastestExposed * reduction / 100, exposure_reduction_pct: reduction },
+    meta: { hour, shade_preference: shadePreference, timezone: "Australia/Sydney" },
   };
 }
 
@@ -76,16 +106,30 @@ function routeFeatures(response) {
   return { type: "FeatureCollection", features: response.routes.map((route) => ({ type: "Feature", properties: { routeType: route.type }, geometry: route.geometry })) };
 }
 
-function endpoints(origin) {
+function endpointFeatures(origin, destination) {
   return { type: "FeatureCollection", features: [
     { type: "Feature", properties: { kind: "origin" }, geometry: { type: "Point", coordinates: [origin.lon, origin.lat] } },
-    { type: "Feature", properties: { kind: "destination" }, geometry: { type: "Point", coordinates: [DEMO_DESTINATION.lon, DEMO_DESTINATION.lat] } },
+    { type: "Feature", properties: { kind: "destination" }, geometry: { type: "Point", coordinates: [destination.lon, destination.lat] } },
   ] };
 }
 
-async function fetchRoute(origin, hour, signal) {
-  const response = await fetch(`${API_BASE_URL}/api/route`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin, destination: DEMO_DESTINATION, hour, shade_preference: 0.8 }), signal });
-  if (!response.ok) throw new Error("Route service is unavailable.");
+function requestBody(origin, destination, hour, shadePreference) {
+  return JSON.stringify({
+    origin: { lat: origin.lat, lon: origin.lon },
+    destination: { lat: destination.lat, lon: destination.lon },
+    hour,
+    shade_preference: shadePreference,
+  });
+}
+
+async function postJson(path, body, signal) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    signal,
+  });
+  if (!response.ok) throw new Error(`${path} is unavailable.`);
   return response.json();
 }
 
@@ -95,22 +139,88 @@ async function fetchShadows(hour, signal) {
   return response.json();
 }
 
+/** Origin/destination field with type-ahead over the landmarks in the cache. */
+function PlaceField({ id, label, value, onChange, disabled, disabledNote }) {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const matches = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return PLACES;
+    return PLACES.filter((place) => `${place.name} ${place.detail}`.toLowerCase().includes(needle));
+  }, [query]);
+
+  function choose(place) {
+    onChange(place);
+    setQuery("");
+    setIsOpen(false);
+  }
+
+  return (
+    <div className="place-field">
+      <label className="place-label" htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        className="place-input"
+        type="text"
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-controls={`${id}-options`}
+        autoComplete="off"
+        disabled={disabled}
+        placeholder={disabled ? disabledNote : value.name}
+        value={isOpen ? query : (disabled ? "" : value.name)}
+        onFocus={() => { setQuery(""); setIsOpen(true); }}
+        onBlur={() => window.setTimeout(() => setIsOpen(false), 140)}
+        onChange={(event) => { setQuery(event.target.value); setIsOpen(true); }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && matches.length > 0) { event.preventDefault(); choose(matches[0]); }
+          if (event.key === "Escape") setIsOpen(false);
+        }}
+      />
+      {isOpen && (
+        <ul className="place-options" id={`${id}-options`} role="listbox">
+          {matches.length === 0 && <li className="place-empty">No landmark in the demo area matches that.</li>}
+          {matches.slice(0, 6).map((place) => (
+            <li key={place.id}>
+              <button type="button" role="option" aria-selected={place.id === value.id} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(place)}>
+                <strong>{place.name}</strong><small>{place.detail}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const [now, setNow] = useState(() => new Date());
-  const [position, setPosition] = useState(DEMO_ORIGIN);
+  const [originPlace, setOriginPlace] = useState(DEFAULT_ORIGIN);
+  const [destinationPlace, setDestinationPlace] = useState(DEFAULT_DESTINATION);
+  const [livePosition, setLivePosition] = useState(null);
   const [isTracking, setIsTracking] = useState(false);
-  const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour()));
+  const [hourOverride, setHourOverride] = useState(null);
+  const [shadePreference, setShadePreference] = useState(0.8);
+  const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour(), 0.8));
   const [shadowData, setShadowData] = useState(() => demoShadows(serviceHour()));
-  const [isLoading, setIsLoading] = useState(true);
+  const [uvData, setUvData] = useState(null);
+  const [isSearching, setIsSearching] = useState(true);
   const [isUsingDemoData, setIsUsingDemoData] = useState(true);
   const [serviceMessage, setServiceMessage] = useState("Preparing the demo route.");
-  const hour = serviceHour(now);
+
+  const hour = hourOverride ?? serviceHour(now);
+  const isFollowingClock = hourOverride === null;
+  const origin = isTracking && livePosition
+    ? { ...livePosition, id: "live", name: "Your live location", detail: "GPS tracking active" }
+    : originPlace;
+
   const fastestRoute = routeData.routes.find((route) => route.type === "fastest");
   const coolestRoute = routeData.routes.find((route) => route.type === "coolest");
   const shadeCoverage = Math.round((1 - coolestRoute.exposed_frac) * 100);
   const addedMinutes = formatMinutes(routeData.comparison.extra_duration_s);
+  const sunReduction = Math.round(routeData.comparison.exposure_reduction_pct);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -128,11 +238,11 @@ function App() {
       map.addSource("canopies", { type: "geojson", data: demoCanopies });
       map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 11, "circle-color": "#5da47b", "circle-opacity": 0.12 } });
       map.addLayer({ id: "canopy-core", type: "circle", source: "canopies", paint: { "circle-radius": 4, "circle-color": "#34745a", "circle-stroke-width": 2, "circle-stroke-color": "#eaf6ee" } });
-      map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour())) });
+      map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour(), 0.8)) });
       map.addLayer({ id: "fastest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "fastest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#d68a43", "line-width": 4, "line-opacity": 0.82 } });
       map.addLayer({ id: "coolest-route-outline", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.92 } });
       map.addLayer({ id: "coolest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#157167", "line-width": 6, "line-opacity": 1 } });
-      map.addSource("endpoints", { type: "geojson", data: endpoints(DEMO_ORIGIN) });
+      map.addSource("endpoints", { type: "geojson", data: endpointFeatures(DEFAULT_ORIGIN, DEFAULT_DESTINATION) });
       map.addLayer({ id: "endpoint-halo", type: "circle", source: "endpoints", filter: ["==", ["get", "kind"], "origin"], paint: { "circle-radius": 14, "circle-color": "#157167", "circle-opacity": 0.15 } });
       map.addLayer({ id: "endpoints", type: "circle", source: "endpoints", paint: { "circle-radius": ["case", ["==", ["get", "kind"], "origin"], 7, 8], "circle-color": ["case", ["==", ["get", "kind"], "origin"], "#ffffff", "#157167"], "circle-stroke-color": "#17302f", "circle-stroke-width": 2 } });
     });
@@ -142,33 +252,48 @@ function App() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const body = requestBody(origin, destinationPlace, hour, shadePreference);
     const debounce = window.setTimeout(async () => {
-      setIsLoading(true);
+      setIsSearching(true);
       try {
-        const [nextRoutes, nextShadows] = await Promise.all([fetchRoute(position, hour, controller.signal), fetchShadows(hour, controller.signal).catch(() => demoShadows(hour))]);
+        const [nextRoutes, nextShadows, nextUv] = await Promise.all([
+          postJson("/api/route", body, controller.signal),
+          fetchShadows(hour, controller.signal).catch(() => demoShadows(hour)),
+          postJson("/api/uv-dose", body, controller.signal).catch(() => null),
+        ]);
         if (controller.signal.aborted) return;
-        setRouteData(nextRoutes); setShadowData(nextShadows); setIsUsingDemoData(false); setServiceMessage(isTracking ? "Live location is updating your route." : "Route estimate updated from the service.");
+        setRouteData(nextRoutes);
+        setShadowData(nextShadows);
+        setUvData(nextUv);
+        setIsUsingDemoData(false);
+        setServiceMessage(isTracking ? "Live location is updating your route." : "Route measured from the shade model.");
       } catch {
         if (controller.signal.aborted) return;
-        setRouteData(demoRouteResponse(hour)); setShadowData(demoShadows(hour)); setIsUsingDemoData(true); setServiceMessage(isTracking ? "Outside the demo area — showing the prepared Sydney route." : "Showing the prepared Sydney route.");
-      } finally { if (!controller.signal.aborted) setIsLoading(false); }
-    }, 350);
+        setRouteData(demoRouteResponse(hour, shadePreference));
+        setShadowData(demoShadows(hour));
+        setUvData(null);
+        setIsUsingDemoData(true);
+        setServiceMessage("Backend unavailable — showing prepared sample figures, not measured results.");
+      } finally {
+        if (!controller.signal.aborted) setIsSearching(false);
+      }
+    }, 320);
     return () => { controller.abort(); window.clearTimeout(debounce); };
-  }, [position, hour, isTracking]);
+  }, [origin.lat, origin.lon, destinationPlace, hour, shadePreference, isTracking]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     map.getSource("routes")?.setData(routeFeatures(routeData));
     map.getSource("shadows")?.setData(shadowData);
-    map.getSource("endpoints")?.setData(endpoints(position));
-  }, [routeData, shadowData, position]);
+    map.getSource("endpoints")?.setData(endpointFeatures(origin, destinationPlace));
+  }, [routeData, shadowData, origin, destinationPlace]);
 
   useEffect(() => {
     if (!isTracking) return undefined;
     if (!navigator.geolocation) { setServiceMessage("This browser does not support location tracking."); setIsTracking(false); return undefined; }
     const watchId = navigator.geolocation.watchPosition(
-      ({ coords }) => { setPosition({ lat: coords.latitude, lon: coords.longitude }); setServiceMessage("Live location is updating your route."); },
+      ({ coords }) => { setLivePosition({ lat: coords.latitude, lon: coords.longitude }); },
       () => { setServiceMessage("Location permission was not granted — staying on the demo route."); setIsTracking(false); },
       { enableHighAccuracy: true, maximumAge: 10_000, timeout: 15_000 },
     );
@@ -176,25 +301,109 @@ function App() {
   }, [isTracking]);
 
   function toggleTracking() {
-    if (isTracking) { setIsTracking(false); setPosition(DEMO_ORIGIN); setServiceMessage("Live tracking paused. Back on the demo route."); return; }
+    if (isTracking) { setIsTracking(false); setLivePosition(null); setServiceMessage("Live tracking paused. Back on the demo route."); return; }
     setServiceMessage("Requesting your location…");
     setIsTracking(true);
   }
 
+  const uvBadge = uvData?.uv?.is_live ? "live" : "estimated";
+  const burnMinutes = uvData?.coolest_minutes_to_burn ?? null;
+
   return <main className="app-shell">
     <div ref={mapContainer} className="map" aria-label="Interactive Shadeney route map" />
     <div className="map-wash" aria-hidden="true" />
+
     <header className="brand-panel"><div className="brand-mark" aria-hidden="true">S</div><div><p className="eyebrow">Sydney shade navigation</p><h1>Shadeney</h1></div></header>
-    <section className="journey-card" aria-label="Destination"><p className="journey-label">Destination</p><div className="journey-row"><span className={`journey-dot ${isTracking ? "live" : ""}`} aria-hidden="true" /><p><strong>{isTracking ? "Your live location" : "Redfern Station"}</strong><small>{isTracking ? "GPS tracking active" : "Demo start"}</small></p></div><div className="journey-line" aria-hidden="true" /><div className="journey-row"><span className="journey-dot destination" aria-hidden="true" /><p><strong>University of Sydney</strong><small>Destination</small></p></div></section>
+
+    <section className="search-panel" aria-label="Plan a walk">
+      <p className="journey-label">Plan a walk</p>
+      <PlaceField id="origin-field" label="From" value={origin} onChange={setOriginPlace} disabled={isTracking} disabledNote="Your live location" />
+      <PlaceField id="destination-field" label="To" value={destinationPlace} onChange={setDestinationPlace} />
+      <p className={`search-status ${isSearching ? "is-busy" : ""}`} role="status" aria-live="polite">
+        <span className="search-spinner" aria-hidden="true" />
+        {isSearching
+          ? `Searching ${origin.name} → ${destinationPlace.name}…`
+          : `${origin.name} → ${destinationPlace.name} · ${formatMinutes(coolestRoute.duration_s)} in shade`}
+      </p>
+    </section>
+
     <section className="route-key" aria-label="Map legend"><span><i className="route-swatch fastest" aria-hidden="true" />Fastest</span><span><i className="route-swatch coolest" aria-hidden="true" />More shade</span><span><i className="tree-swatch" aria-hidden="true" />Canopy</span></section>
     <button className={`tracking-button ${isTracking ? "is-active" : ""}`} type="button" onClick={toggleTracking}><span className="tracking-dot" aria-hidden="true" />{isTracking ? "Pause live tracking" : "Start live tracking"}</button>
+
     <section className="navigation-panel" aria-label="Live route details">
       <div className="sheet-handle" aria-hidden="true" />
-      <div className="sheet-heading"><div><p className="panel-kicker">Live shade route</p><h2>{shadeCoverage}% <span>shaded</span></h2><p className="panel-subtitle">{isDaylight(now) ? `Sun estimate for ${formatClock(now)}` : `Outside daylight — previewing ${formatHourLabel(hour)}`}</p></div><div className="route-duration"><strong>{formatMinutes(coolestRoute.duration_s)}</strong><span>{Math.round(coolestRoute.distance_m / 100) / 10} km</span></div></div>
-      <div className="route-cards" aria-label="Route comparison"><article className="route-card recommended"><div className="route-card-icon" aria-hidden="true">☂</div><div className="route-card-copy"><p>More shade</p><strong>{addedMinutes} longer · {Math.round(routeData.comparison.exposure_reduction_pct)}% less sun</strong><div className="exposure-meter" aria-label={`${shadeCoverage}% of the recommended route is shaded`}><span style={{ width: `${shadeCoverage}%` }} /></div></div><span className="recommended-tag">Best match</span></article><article className="route-card"><div className="route-card-icon warm" aria-hidden="true">☀</div><div className="route-card-copy"><p>Fastest</p><strong>{formatMinutes(fastestRoute.duration_s)} · more sun</strong><div className="exposure-meter warm-meter" aria-label="The fastest route has higher direct sun exposure"><span /></div></div></article></div>
-      <div className="live-strip"><span className={`live-indicator ${isTracking ? "is-live" : ""}`} aria-hidden="true" /> <strong>{isTracking ? "Tracking your location" : "Demo navigation"}</strong><span>{isLoading ? "Updating…" : "Refreshes as you move"}</span></div>
+      <div className="sheet-heading">
+        <div>
+          <p className="panel-kicker">Shade route</p>
+          <h2>{shadeCoverage}% <span>shaded</span></h2>
+          <p className="panel-subtitle">{isFollowingClock && isDaylight(now) ? `Sun position for ${formatClock(now)}` : `Sun position at ${formatHourLabel(hour)}`}</p>
+        </div>
+        <div className="route-duration"><strong>{formatMinutes(coolestRoute.duration_s)}</strong><span>{Math.round(coolestRoute.distance_m / 100) / 10} km</span></div>
+      </div>
+
+      <div className="controls">
+        <div className="control">
+          <div className="control-head">
+            <label htmlFor="hour-slider">Time of day</label>
+            <span className="control-value">{formatHourLabel(hour)}</span>
+            {!isFollowingClock && <button className="control-reset" type="button" onClick={() => setHourOverride(null)}>Use now</button>}
+          </div>
+          <input id="hour-slider" type="range" min={FIRST_LIT_HOUR} max={LAST_LIT_HOUR} step={1} value={hour} onChange={(event) => setHourOverride(Number(event.target.value))} />
+          <div className="control-scale" aria-hidden="true"><span>7 am</span><span>noon</span><span>5 pm</span></div>
+        </div>
+        <div className="control">
+          <div className="control-head">
+            <label htmlFor="shade-slider">Shade preference</label>
+            <span className="control-value">{shadeLabel(shadePreference)}</span>
+          </div>
+          <input id="shade-slider" type="range" min={0} max={1} step={0.05} value={shadePreference} onChange={(event) => setShadePreference(Number(event.target.value))} />
+          <div className="control-scale" aria-hidden="true"><span>Fastest</span><span>Shadiest</span></div>
+        </div>
+      </div>
+
+      <div className="route-cards" aria-label="Route comparison">
+        <article className="route-card recommended">
+          <div className="route-card-icon" aria-hidden="true">☂</div>
+          <div className="route-card-copy">
+            <p>More shade</p>
+            <strong>{addedMinutes} longer · {sunReduction}% less direct sun</strong>
+            <div className="exposure-meter" aria-label={`${shadeCoverage}% of the recommended route is shaded`}><span style={{ width: `${shadeCoverage}%` }} /></div>
+          </div>
+          <span className="recommended-tag">Best match</span>
+        </article>
+        <article className="route-card">
+          <div className="route-card-icon warm" aria-hidden="true">☀</div>
+          <div className="route-card-copy">
+            <p>Fastest</p>
+            <strong>{formatMinutes(fastestRoute.duration_s)} · {Math.round(fastestRoute.exposed_frac * 100)}% in sun</strong>
+            <div className="exposure-meter warm-meter" aria-label="The fastest route has higher direct sun exposure"><span style={{ width: `${Math.round(fastestRoute.exposed_frac * 100)}%` }} /></div>
+          </div>
+        </article>
+      </div>
+
+      {uvData && (
+        <div className="uv-strip">
+          <div className="uv-index">
+            <span className="uv-number">{uvData.uv.uv_index.toFixed(1)}</span>
+            <span className="uv-caption">UV index<span className={`uv-badge ${uvBadge}`}>{uvBadge}</span></span>
+          </div>
+          <div className="uv-detail">
+            <strong>{uvData.coolest_sed.toFixed(2)} SED on the shade route</strong>
+            <span>
+              {uvData.uv_reduction_pct > 0
+                ? `${uvData.uv_reduction_pct.toFixed(0)}% less UV than the fastest route`
+                : "No UV saving at this hour — the extra walking time offsets the shade"}
+              {burnMinutes ? ` · fair skin reddens after about ${Math.round(burnMinutes)} min` : " · no burn risk at this UV level"}
+            </span>
+          </div>
+          <p className="uv-note">Shade blocks direct sun, not the roughly 45% of UV that arrives as diffuse skylight.</p>
+        </div>
+      )}
+
+      <div className="live-strip"><span className={`live-indicator ${isTracking ? "is-live" : ""}`} aria-hidden="true" /> <strong>{isTracking ? "Tracking your location" : "Demo navigation"}</strong><span>{isSearching ? "Updating…" : "Refreshes as you move"}</span></div>
       <p className={`service-note ${isUsingDemoData ? "is-demo" : ""}`} role="status">{serviceMessage}</p>
     </section>
+
     <p className="map-credit">Map data © OpenStreetMap contributors · Tree data © City of Sydney (CC BY 4.0)</p>
   </main>;
 }
