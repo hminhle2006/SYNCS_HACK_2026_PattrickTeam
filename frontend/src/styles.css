@@ -179,58 +179,52 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
 }
 
 /* ---- phones ----------------------------------------------------------- */
-/* The layout was built for a laptop and has no breakpoints: at 375px the
-   panel drops to ~255px of usable width while the route cards stay a
-   two-column grid, so the comparison text wraps into a mess. Stack them,
-   reclaim the horizontal padding, and shrink the chrome so the map keeps
-   most of the screen. */
+/* The layout was built for a laptop and shipped with no breakpoints. Class
+   names here are the real ones -- .brand-panel and .journey-card, not the
+   .app-header / .destination-card I first guessed at, which silently matched
+   nothing. */
 
-@media (max-width: 560px) {
+@media (max-width: 620px) {
+  html, body { overflow-x: hidden; }
+
   .navigation-panel {
-    width: calc(100vw - 20px);
-    bottom: 14px;
+    left: 10px;
+    right: 10px;
+    width: auto;
+    transform: none;          /* left/right pin it; translateX would offset it */
+    bottom: 12px;
     padding: 10px 14px 12px;
     border-radius: 18px;
   }
 
-  /* One card per row -- side by side there is not enough width for
-     "1 min longer · 38% less sun" to sit on one line. */
-  .route-cards {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
+  /* Side by side there is not enough width for
+     "1 min longer - 38% less sun" to stay on one line. */
+  .route-cards { grid-template-columns: 1fr; gap: 8px; margin-bottom: 12px; }
 
   .sheet-heading { margin-bottom: 10px; }
-  .sheet-heading h2 { font-size: 27px; }
-  .sheet-handle { margin-bottom: 9px; }
+  .sheet-heading h2 { font-size: 26px; }
+  .sheet-handle { margin-bottom: 8px; }
 
-  .app-header { padding: 8px 12px; }
-  .app-header h1 { font-size: 20px; }
-  .app-brand-kicker { font-size: 9px; letter-spacing: 0.12em; }
+  .brand-panel { left: 10px; top: 10px; padding: 7px 12px; }
+  .brand-panel h1 { font-size: 19px; }
 
-  /* The destination card is reference information, not the demo. Let the map
-     have that space back. */
-  .destination-card {
-    padding: 10px 12px;
-    font-size: 13px;
-  }
+  /* Fixed 273px at left:32px, and it is reference information -- the map
+     needs the room more than the demo does. */
+  .journey-card { display: none; }
 
-  .time-scrubber { margin-top: 0.7rem; padding: 0.6rem 0.75rem 0.5rem; }
-  .scrubber-head strong { font-size: 0.95rem; }
+  .route-key { right: 10px; font-size: 10px; gap: 6px; }
+  .tracking-button { right: 10px; }
 
-  /* nowrap pushes this off a narrow screen. */
+  .time-scrubber { margin-top: 0.6rem; padding: 0.55rem 0.7rem 0.45rem; }
+  .scrubber-head strong { font-size: 0.92rem; }
+
   .map-credit {
+    left: 10px; right: 10px;
+    width: auto;
+    transform: none;
     white-space: normal;
-    width: calc(100vw - 24px);
     font-size: 9px;
     line-height: 1.3;
+    text-align: center;
   }
-
-  .route-key { font-size: 11px; gap: 8px; }
-}
-
-/* Small phones: the destination card costs more than it gives. */
-@media (max-width: 400px) {
-  .destination-card { display: none; }
 }
