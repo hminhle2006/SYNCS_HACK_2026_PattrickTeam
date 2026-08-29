@@ -16,6 +16,8 @@ from backend.api.schemas import (
     RouteOption,
     RouteRequest,
     RouteResponse,
+    UVDoseResponse,
+    UVIndex,
 )
 from backend.config import (
     APP_NAME,
@@ -172,6 +174,79 @@ def route_endpoint(request: RouteRequest) -> RouteResponse | JSONResponse:
             500,
             "INTERNAL_ROUTING_ERROR",
             "Routing failed unexpectedly. Please try again.",
+        )
+
+
+def _uv_reading(hour: int) -> UVIndex:
+    from backend.data.uv import uv_index_for_hour
+
+    reading = uv_index_for_hour(hour)
+    return UVIndex(
+        hour=hour,
+        uv_index=round(max(reading.index, 0.0), 1),
+        source=reading.source,
+        is_live=reading.is_live,
+        observed_at=reading.observed_at,
+    )
+
+
+@app.get("/api/uv", response_model=UVIndex)
+def uv(hour: int = Query(ge=MIN_HOUR, le=MAX_HOUR)) -> UVIndex | JSONResponse:
+    """UV index for the displayed hour: live ARPANSA now, modelled otherwise."""
+    try:
+        return _uv_reading(hour)
+    except Exception:
+        logger.exception("uv handler failed")
+        return _error(
+            500, "INTERNAL_ROUTING_ERROR", "UV index lookup failed unexpectedly."
+        )
+
+
+@app.post("/api/uv-dose", response_model=UVDoseResponse)
+def uv_dose(request: RouteRequest) -> UVDoseResponse | JSONResponse:
+    """Honest UV dose for the fastest and coolest routes of this request.
+
+    Shade removes only the direct beam; the diffuse skylight term stays, so
+    the UV reduction is deliberately smaller than the sun-exposure reduction.
+    """
+    from backend.geo.dose import compare_doses, route_uv_dose
+
+    try:
+        graph = getattr(app.state, "graph", None)
+        if graph is None:
+            logger.error("no routing graph loaded; UV dose uses MOCK routes")
+            fastest, coolest = build_mock_response(request).routes
+        else:
+            fastest, coolest = route(
+                graph,
+                (request.origin.lat, request.origin.lon),
+                (request.destination.lat, request.destination.lon),
+                request.hour,
+                request.shade_preference,
+            )
+        reading = _uv_reading(request.hour)
+        numbers = compare_doses(
+            route_uv_dose(reading.uv_index, fastest.duration_s, fastest.exposed_frac),
+            route_uv_dose(reading.uv_index, coolest.duration_s, coolest.exposed_frac),
+        )
+        return UVDoseResponse(
+            uv=reading,
+            fastest_sed=numbers["fastest_sed"],
+            coolest_sed=numbers["coolest_sed"],
+            uv_reduction_sed=numbers["uv_reduction_sed"],
+            uv_reduction_pct=numbers["uv_reduction_pct"],
+            fastest_minutes_to_burn=numbers["fastest_minutes_to_burn"],
+            coolest_minutes_to_burn=numbers["coolest_minutes_to_burn"],
+            meta=RouteMeta(
+                hour=request.hour, shade_preference=request.shade_preference
+            ),
+        )
+    except RoutingError as exc:
+        return _error(exc.status_code, exc.code, exc.message)
+    except Exception:
+        logger.exception("uv-dose handler failed")
+        return _error(
+            500, "INTERNAL_ROUTING_ERROR", "UV dose computation failed unexpectedly."
         )
 
 
