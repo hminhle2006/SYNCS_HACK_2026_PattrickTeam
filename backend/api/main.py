@@ -71,8 +71,20 @@ app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
 # the new port is then rejected as a CORS violation, and the frontend silently
 # falls back to hardcoded demo numbers: the app looks like it works while
 # showing fiction. Matching any loopback port removes that whole failure mode.
-# This is a localhost-only pattern, so it grants nothing to a remote origin.
-LOCALHOST_ORIGIN_PATTERN = r"http://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
+#
+# Demoing on a phone hits the same wall one step further out: the handset loads
+# the app over the local network, so its origin is the laptop's LAN address and
+# not loopback at all. Private ranges are therefore allowed too. Starlette
+# fullmatches this pattern, so it stays confined to addresses that are only
+# reachable from the same network -- no public origin can satisfy it.
+LOCALHOST_ORIGIN_PATTERN = (
+    r"http://("
+    r"localhost|127\.0\.0\.1|\[::1\]"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+    r")(:\d+)?"
+)
 
 app.add_middleware(
     CORSMiddleware,

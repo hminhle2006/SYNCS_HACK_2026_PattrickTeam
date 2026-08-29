@@ -4,7 +4,12 @@ import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+// On a phone the app is loaded from the laptop's LAN address, where "localhost"
+// would mean the handset itself. Defaulting to whatever host served the page
+// keeps the demo working on both without an environment variable.
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ??
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
 // Landmarks inside the exposure cache's bounding box. The cache covers
@@ -122,6 +127,14 @@ function requestBody(origin, destination, hour, shadePreference) {
   });
 }
 
+/** Error the API itself returned, carrying its stable contract code. */
+class ApiError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+
 async function postJson(path, body, signal) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
@@ -129,7 +142,13 @@ async function postJson(path, body, signal) {
     body,
     signal,
   });
-  if (!response.ok) throw new Error(`${path} is unavailable.`);
+  if (!response.ok) {
+    // A contract error means the service is up and rejected the request; that
+    // is worth telling the user about, unlike an unreachable backend.
+    const detail = await response.json().then((body) => body?.detail).catch(() => null);
+    if (detail?.message) throw new ApiError(detail.code, detail.message);
+    throw new Error(`${path} is unavailable.`);
+  }
   return response.json();
 }
 
@@ -137,6 +156,66 @@ async function fetchShadows(hour, signal) {
   const response = await fetch(`${API_BASE_URL}/api/shadows?hour=${hour}`, { signal });
   if (!response.ok) throw new Error("Shadow service is unavailable.");
   return response.json();
+}
+
+/** Sun exposure across the lit day for one route, so the time dimension is
+ *  visible at a glance rather than one hour at a time. One measure, one hue:
+ *  pale amber for a shaded hour through deep amber for an exposed one. */
+function DayProfile({ profile, hour, onPick }) {
+  const best = profile.reduce((a, b) => (b.exposedFrac < a.exposedFrac ? b : a));
+  const current = profile.find((entry) => entry.hour === hour);
+  // Percentage of a route, so the bars run from a true zero baseline: scaling
+  // to the observed range would turn a two-point spread into a dramatic one.
+  const worthMoving = current && current.exposedFrac - best.exposedFrac >= 0.02;
+
+  return (
+    <div className="day-profile">
+      <div className="control-head">
+        <span className="profile-title" id="profile-title">Sun across the day</span>
+        <span className="control-value">
+          {worthMoving
+            ? `Least sun at ${formatHourLabel(best.hour)} · ${Math.round(best.exposedFrac * 100)}% in sun`
+            : "This is already one of the shadiest hours"}
+        </span>
+      </div>
+      <div className="profile-bars" role="group" aria-labelledby="profile-title">
+        {profile.map((entry) => {
+          const percent = Math.round(entry.exposedFrac * 100);
+          const isCurrent = entry.hour === hour;
+          const isBest = entry.hour === best.hour;
+          return (
+            <button
+              key={entry.hour}
+              type="button"
+              className={`profile-bar ${isCurrent ? "is-current" : ""} ${isBest ? "is-best" : ""}`}
+              title={`${formatHourLabel(entry.hour)} — ${percent}% of the route in direct sun`}
+              aria-label={`Set the time to ${formatHourLabel(entry.hour)}, ${percent} percent of the route in direct sun`}
+              aria-pressed={isCurrent}
+              onClick={() => onPick(entry.hour)}
+            >
+              <span className="profile-track">
+                <span
+                  className="profile-fill"
+                  style={{
+                    height: `${Math.max(6, entry.exposedFrac * 100)}%`,
+                    // Same hue throughout; only lightness carries magnitude.
+                    background: `color-mix(in oklab, #b5651f ${25 + entry.exposedFrac * 75}%, #f5dcbd)`,
+                  }}
+                />
+              </span>
+              <span className="profile-hour">{entry.hour}</span>
+            </button>
+          );
+        })}
+      </div>
+      {current && (
+        <p className="profile-caption">
+          {Math.round(current.exposedFrac * 100)}% of the shade route is in direct sun at {formatHourLabel(hour)}
+          {worthMoving && ` · leaving at ${formatHourLabel(best.hour)} would cut that to ${Math.round(best.exposedFrac * 100)}%`}
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** Origin/destination field with type-ahead over the landmarks in the cache. */
@@ -206,7 +285,9 @@ function App() {
   const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour(), 0.8));
   const [shadowData, setShadowData] = useState(() => demoShadows(serviceHour()));
   const [uvData, setUvData] = useState(null);
+  const [dayProfile, setDayProfile] = useState(null);
   const [isSearching, setIsSearching] = useState(true);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUsingDemoData, setIsUsingDemoData] = useState(true);
   const [serviceMessage, setServiceMessage] = useState("Preparing the demo route.");
 
@@ -267,8 +348,15 @@ function App() {
         setUvData(nextUv);
         setIsUsingDemoData(false);
         setServiceMessage(isTracking ? "Live location is updating your route." : "Route measured from the shade model.");
-      } catch {
+      } catch (error) {
         if (controller.signal.aborted) return;
+        if (error instanceof ApiError) {
+          // The service answered and refused: say why instead of quietly
+          // swapping in numbers it never produced.
+          setServiceMessage(error.message);
+          setIsSearching(false);
+          return;
+        }
         setRouteData(demoRouteResponse(hour, shadePreference));
         setShadowData(demoShadows(hour));
         setUvData(null);
@@ -280,6 +368,28 @@ function App() {
     }, 320);
     return () => { controller.abort(); window.clearTimeout(debounce); };
   }, [origin.lat, origin.lon, destinationPlace, hour, shadePreference, isTracking]);
+
+  // The whole-day profile depends on the endpoints and the shade preference,
+  // not on the displayed hour, so it is computed once per route rather than on
+  // every scrub. Debounced longer than the main fetch because it is 11 calls.
+  useEffect(() => {
+    const controller = new AbortController();
+    const litHours = [];
+    for (let h = FIRST_LIT_HOUR; h <= LAST_LIT_HOUR; h += 1) litHours.push(h);
+    const debounce = window.setTimeout(async () => {
+      try {
+        const results = await Promise.all(litHours.map(async (h) => {
+          const data = await postJson("/api/route", requestBody(origin, destinationPlace, h, shadePreference), controller.signal);
+          const coolest = data.routes.find((route) => route.type === "coolest");
+          return { hour: h, exposedFrac: coolest.exposed_frac, durationS: coolest.duration_s };
+        }));
+        if (!controller.signal.aborted) setDayProfile(results);
+      } catch {
+        if (!controller.signal.aborted) setDayProfile(null);
+      }
+    }, 700);
+    return () => { controller.abort(); window.clearTimeout(debounce); };
+  }, [origin.lat, origin.lon, destinationPlace, shadePreference]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -315,10 +425,27 @@ function App() {
 
     <header className="brand-panel"><div className="brand-mark" aria-hidden="true">S</div><div><p className="eyebrow">Sydney shade navigation</p><h1>Shadeney</h1></div></header>
 
-    <section className="search-panel" aria-label="Plan a walk">
+    <section className={`search-panel ${isSearchOpen ? "is-open" : ""}`} aria-label="Plan a walk">
       <p className="journey-label">Plan a walk</p>
-      <PlaceField id="origin-field" label="From" value={origin} onChange={setOriginPlace} disabled={isTracking} disabledNote="Your live location" />
-      <PlaceField id="destination-field" label="To" value={destinationPlace} onChange={setDestinationPlace} />
+      {/* On a phone the two fields would eat the map, so they collapse behind a
+          summary the whole route reads from. Desktop always shows them. */}
+      <button className="search-summary" type="button" aria-expanded={isSearchOpen} onClick={() => setIsSearchOpen((open) => !open)}>
+        <span className="search-summary-text">{origin.name} <span aria-hidden="true">→</span> {destinationPlace.name}</span>
+        <span className="search-summary-action">{isSearchOpen ? "Done" : "Change"}</span>
+      </button>
+      <div className="search-fields">
+        <PlaceField id="origin-field" label="From" value={origin} onChange={setOriginPlace} disabled={isTracking} disabledNote="Your live location" />
+        <button
+          className="swap-button"
+          type="button"
+          disabled={isTracking}
+          title={isTracking ? "Pause live tracking to swap" : "Swap start and destination"}
+          onClick={() => { setOriginPlace(destinationPlace); setDestinationPlace(originPlace); }}
+        >
+          <span aria-hidden="true">⇅</span> Swap
+        </button>
+        <PlaceField id="destination-field" label="To" value={destinationPlace} onChange={setDestinationPlace} />
+      </div>
       <p className={`search-status ${isSearching ? "is-busy" : ""}`} role="status" aria-live="polite">
         <span className="search-spinner" aria-hidden="true" />
         {isSearching
@@ -360,6 +487,8 @@ function App() {
           <div className="control-scale" aria-hidden="true"><span>Fastest</span><span>Shadiest</span></div>
         </div>
       </div>
+
+      {dayProfile && <DayProfile profile={dayProfile} hour={hour} onPick={setHourOverride} />}
 
       <div className="route-cards" aria-label="Route comparison">
         <article className="route-card recommended">
