@@ -10,6 +10,10 @@ import "./styles.css";
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ??
   `${window.location.protocol}//${window.location.hostname}:8000`;
+
+// Bounds for the tree fetch. Covers the demo corridor; the backend clips the
+// cached City of Sydney extract to it.
+const TREE_BOUNDS = { west: 151.186, south: -33.897, east: 151.203, north: -33.882 };
 const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
 // Landmarks inside the exposure cache's bounding box. The cache covers
@@ -377,11 +381,11 @@ function App() {
       map.addLayer({ id: "shadow-outline", type: "line", source: "shadows", paint: { "line-color": "#7ba1a1", "line-width": 1, "line-opacity": 0.38 } });
       map.addSource("canopies", { type: "geojson", data: canopyDataRef.current });
       // Canopy pools sized by each tree's measured crown radius.
-      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 12, 8, 26], "circle-color": "#5da47b", "circle-opacity": 0.14, "circle-blur": 0.8 } });
+      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 12, 8, 26], "circle-color": "#5da47b", "circle-opacity": ["interpolate", ["linear"], ["zoom"], 14, 0, 15, 0.06, 16, 0.16, 17, 0.22], "circle-blur": 0.8 } });
       map.addImage("tree-marker", createTreeMarker(), { pixelRatio: 2 });
       // Markers fade out when zoomed out: 4,340 icons at overview zoom is
       // texture, not information.
-      map.addLayer({ id: "tree-marker", type: "symbol", source: "canopies", layout: { "icon-image": "tree-marker", "icon-size": ["interpolate", ["linear"], ["zoom"], 13, 0.28, 15.25, 0.46, 16, 0.6], "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-pitch-alignment": "viewport", "icon-rotation-alignment": "viewport" }, paint: { "icon-opacity": ["interpolate", ["linear"], ["zoom"], 13, 0.12, 14.5, 0.32, 15.25, 0.65, 16, 1] } });
+      map.addLayer({ id: "tree-marker", type: "symbol", source: "canopies", layout: { "icon-image": "tree-marker", "icon-size": ["interpolate", ["linear"], ["zoom"], 14.5, 0.2, 15.5, 0.36, 16.5, 0.55, 17, 0.62], "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-pitch-alignment": "viewport", "icon-rotation-alignment": "viewport" }, paint: { "icon-opacity": ["interpolate", ["linear"], ["zoom"], 14.4, 0, 15, 0.12, 15.8, 0.45, 16.5, 0.9, 17, 1] } });
       map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour(), 0.8)) });
       map.addLayer({ id: "fastest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "fastest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#d68a43", "line-width": 4, "line-opacity": 0.82 } });
       map.addLayer({ id: "coolest-route-outline", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.92 } });
@@ -458,7 +462,7 @@ function App() {
     const controller = new AbortController();
     fetchTrees(controller.signal)
       .then((trees) => { if (trees.features?.length) setCanopyData(mapCanopySample(trees)); })
-      .catch(() => {});
+      .catch((error) => { if (error.name !== "AbortError") console.warn("tree layer unavailable:", error); });
     return () => controller.abort();
   }, []);
 
