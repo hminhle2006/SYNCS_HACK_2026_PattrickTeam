@@ -2,7 +2,7 @@
 
 :root { font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif; color: #17302f; background: #f3f7f4; font-synthesis: none; }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 1100px; min-height: 100vh; }
+body { margin: 0; min-width: 320px; min-height: 100vh; -webkit-text-size-adjust: 100%; }
 button, input { font: inherit; }
 button { cursor: pointer; }
 
@@ -44,6 +44,8 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
 .place-options strong { color: #1d3936; font-size: 12.5px; font-weight: 700; }
 .place-options small { color: #6b827a; font-size: 11px; }
 .place-empty { padding: 8px 9px; color: #7b8f87; font-size: 11.5px; }
+/* The collapsed summary is a phone affordance; desktop shows the fields. */
+.search-summary { display: none; }
 .swap-button { display: inline-flex; gap: 5px; align-items: center; margin: -3px 0 7px auto; border: 0; border-radius: 7px; padding: 3px 8px; background: #eaf3ef; color: #1b6d60; font-size: 10.5px; font-weight: 700; }
 .swap-button:hover:not(:disabled) { background: #d9ece4; }
 .swap-button:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -146,3 +148,121 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
 .maplibregl-ctrl-attrib { font-family: "DM Sans", sans-serif; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @keyframes location-pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(33, 161, 111, 0.14); } 50% { box-shadow: 0 0 0 8px rgba(33, 161, 111, 0); } }
+
+/* Phone layout. The desktop composition floats cards over a full-bleed map;
+   on a handset that becomes a compact header plus a scrollable bottom sheet,
+   so the map stays visible while every control remains reachable one-thumbed.
+   Tuned against an iPhone 15 Pro Max (430 x 932) with its safe areas. */
+@media (max-width: 720px) {
+  .app-shell { min-height: 100dvh; }
+  .map { bottom: 0; }
+
+  .brand-panel { top: calc(10px + env(safe-area-inset-top)); left: 12px; gap: 9px; padding: 8px 13px 8px 8px; border-radius: 13px; }
+  .brand-mark { width: 30px; height: 30px; border-radius: 10px; font-size: 17px; }
+  .brand-panel .eyebrow { font-size: 8.5px; }
+  h1 { font-size: 19px; }
+
+  /* The legend duplicates the labelled route cards in the sheet below. */
+  .route-key { display: none; }
+
+  .tracking-button { top: calc(10px + env(safe-area-inset-top)); right: 12px; padding: 9px 12px; border-radius: 10px; font-size: 11px; }
+
+  /* Below about 400px the wordmark and the tracking button fight for the same
+     row; the eyebrow is the expendable half. */
+  @media (max-width: 420px) {
+    .brand-panel .eyebrow { display: none; }
+    .brand-panel { padding: 7px 12px 7px 7px; }
+  }
+
+  .search-panel { top: calc(58px + env(safe-area-inset-top)); right: 12px; left: 12px; width: auto; padding: 10px 12px 9px; }
+  /* The summary already reads as the route; the heading is desktop chrome. */
+  .search-panel > .journey-label { display: none; }
+  .search-panel.is-open > .journey-label { display: block; margin-bottom: 8px; }
+  /* Collapsed by default so the map keeps most of the screen. */
+  .search-summary { display: flex; gap: 10px; align-items: center; width: 100%; padding: 9px 11px; border: 1px solid #d7e4dd; border-radius: 10px; background: #f7faf8; text-align: left; }
+  .search-summary-text { flex: 1; color: #1d3936; font-size: 13px; font-weight: 700; line-height: 1.3; }
+  .search-summary-action { flex: 0 0 auto; padding: 3px 8px; border-radius: 6px; background: #e4f2ec; color: #1b6d60; font-size: 10.5px; font-weight: 700; }
+  .search-summary:focus-visible { outline: 2px solid #2c8576; outline-offset: 2px; }
+  .search-fields { display: none; margin-top: 9px; }
+  .search-panel.is-open .search-fields { display: block; }
+  .place-field { margin-bottom: 7px; }
+  /* 16px keeps iOS from zooming the viewport when a field takes focus. */
+  .place-input { padding: 10px 11px; font-size: 16px; }
+  .place-options { max-height: 46vh; }
+  .place-options strong { font-size: 13.5px; }
+  /* The summary bar above already names the route, so the idle status would
+     just repeat it; keep only the in-flight state, which the summary lacks. */
+  .search-status { margin-top: 9px; padding-top: 9px; }
+  .search-status:not(.is-busy) { display: none; }
+
+  .navigation-panel {
+    left: 0; right: 0; bottom: 0; width: 100%;
+    max-height: 52dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    transform: none;
+    padding: 10px 16px calc(34px + env(safe-area-inset-bottom));
+    border-width: 1px 0 0; border-radius: 21px 21px 0 0;
+  }
+  .sheet-handle { margin-bottom: 11px; }
+  .sheet-heading { margin-bottom: 13px; }
+  .sheet-heading h2 { font-size: 29px; }
+  .sheet-heading h2 span { font-size: 16px; }
+
+  .controls { grid-template-columns: 1fr; gap: 13px; margin-bottom: 13px; padding-bottom: 13px; }
+  /* Bigger thumbs and taller tracks: these are dragged with a thumb, not a mouse. */
+  .control input[type="range"] { height: 6px; }
+  .control input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
+  .control input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; }
+
+  .profile-bars { height: 66px; }
+  .profile-track { height: 52px; }
+  .profile-hour { font-size: 9px; }
+
+  .route-cards { grid-template-columns: 1fr; gap: 8px; }
+  .route-card { min-height: 0; }
+
+  .uv-strip { gap: 3px 11px; padding: 10px 12px; }
+  .uv-number { font-size: 24px; }
+
+  /* A solid footer bar rather than floating text: the sheet scrolls underneath
+     it, and the required OSM and City of Sydney credit must never be covered
+     by that content or scrolled away. */
+  .map-credit {
+    position: fixed; right: 0; bottom: 0; left: 0;
+    padding: 5px 12px calc(5px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.97);
+    border-top: 1px solid #eef4f1;
+    text-align: center; font-size: 9.5px; text-shadow: none;
+  }
+
+  /* Pinch and double-tap already zoom; the control only fights the tracking
+     button for the same corner. */
+  .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-top-right { display: none; }
+}
+
+/* A landscape handset is wide but very short, so a bottom sheet would cover the
+   map completely and collide with the search panel. Keyed on height and
+   orientation rather than width, because a 932x430 phone is wider than the
+   portrait breakpoint and would otherwise fall back to the desktop layout.
+   Search sits in a left column, detail in a right one, map down the middle. */
+@media (max-height: 560px) and (orientation: landscape) {
+  .brand-panel { top: calc(10px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); gap: 9px; padding: 7px 13px 7px 7px; border-radius: 13px; }
+  .brand-mark { width: 28px; height: 28px; border-radius: 9px; font-size: 16px; }
+  .brand-panel .eyebrow { display: none; }
+  h1 { font-size: 18px; }
+  .search-panel { top: calc(62px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); right: auto; width: 292px; }
+  .navigation-panel {
+    top: 10px; right: calc(12px + env(safe-area-inset-right)); bottom: 10px; left: auto;
+    width: 372px; max-height: none; overflow-y: auto; overscroll-behavior: contain;
+    transform: none; border-radius: 19px; border-width: 1px;
+    padding: 12px 18px 16px;
+  }
+  .sheet-handle { display: none; }
+  .controls { grid-template-columns: 1fr; }
+  .route-key { display: none; }
+  .tracking-button { top: auto; right: auto; bottom: calc(30px + env(safe-area-inset-bottom)); left: calc(12px + env(safe-area-inset-left)); }
+  .map-credit { right: auto; left: calc(12px + env(safe-area-inset-left)); bottom: calc(7px + env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

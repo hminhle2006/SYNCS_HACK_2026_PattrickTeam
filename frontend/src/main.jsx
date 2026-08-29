@@ -4,7 +4,12 @@ import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+// On a phone the app is loaded from the laptop's LAN address, where "localhost"
+// would mean the handset itself. Defaulting to whatever host served the page
+// keeps the demo working on both without an environment variable.
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ??
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
 // Landmarks inside the exposure cache's bounding box. The cache covers
@@ -282,6 +287,7 @@ function App() {
   const [uvData, setUvData] = useState(null);
   const [dayProfile, setDayProfile] = useState(null);
   const [isSearching, setIsSearching] = useState(true);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUsingDemoData, setIsUsingDemoData] = useState(true);
   const [serviceMessage, setServiceMessage] = useState("Preparing the demo route.");
 
@@ -419,19 +425,27 @@ function App() {
 
     <header className="brand-panel"><div className="brand-mark" aria-hidden="true">S</div><div><p className="eyebrow">Sydney shade navigation</p><h1>Shadeney</h1></div></header>
 
-    <section className="search-panel" aria-label="Plan a walk">
+    <section className={`search-panel ${isSearchOpen ? "is-open" : ""}`} aria-label="Plan a walk">
       <p className="journey-label">Plan a walk</p>
-      <PlaceField id="origin-field" label="From" value={origin} onChange={setOriginPlace} disabled={isTracking} disabledNote="Your live location" />
-      <button
-        className="swap-button"
-        type="button"
-        disabled={isTracking}
-        title={isTracking ? "Pause live tracking to swap" : "Swap start and destination"}
-        onClick={() => { setOriginPlace(destinationPlace); setDestinationPlace(originPlace); }}
-      >
-        <span aria-hidden="true">⇅</span> Swap
+      {/* On a phone the two fields would eat the map, so they collapse behind a
+          summary the whole route reads from. Desktop always shows them. */}
+      <button className="search-summary" type="button" aria-expanded={isSearchOpen} onClick={() => setIsSearchOpen((open) => !open)}>
+        <span className="search-summary-text">{origin.name} <span aria-hidden="true">→</span> {destinationPlace.name}</span>
+        <span className="search-summary-action">{isSearchOpen ? "Done" : "Change"}</span>
       </button>
-      <PlaceField id="destination-field" label="To" value={destinationPlace} onChange={setDestinationPlace} />
+      <div className="search-fields">
+        <PlaceField id="origin-field" label="From" value={origin} onChange={setOriginPlace} disabled={isTracking} disabledNote="Your live location" />
+        <button
+          className="swap-button"
+          type="button"
+          disabled={isTracking}
+          title={isTracking ? "Pause live tracking to swap" : "Swap start and destination"}
+          onClick={() => { setOriginPlace(destinationPlace); setDestinationPlace(originPlace); }}
+        >
+          <span aria-hidden="true">⇅</span> Swap
+        </button>
+        <PlaceField id="destination-field" label="To" value={destinationPlace} onChange={setDestinationPlace} />
+      </div>
       <p className={`search-status ${isSearching ? "is-busy" : ""}`} role="status" aria-live="polite">
         <span className="search-spinner" aria-hidden="true" />
         {isSearching
