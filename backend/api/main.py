@@ -1,7 +1,8 @@
 """FastAPI scaffold. Lane C replaces route internals without changing schemas."""
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -19,6 +20,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """Map pydantic validation failures onto the stable error codes."""
+    locs = {part for error in exc.errors() for part in error.get("loc", ())}
+    if "hour" in locs:
+        code, message = "INVALID_HOUR", "Hour must be an integer between 6 and 19."
+    else:
+        code, message = (
+            "INVALID_COORDINATES",
+            "Request coordinates or parameters are invalid.",
+        )
+    return JSONResponse(
+        status_code=422, content={"detail": {"code": code, "message": message}}
+    )
 
 
 @app.get("/api/health", response_model=HealthResponse)
