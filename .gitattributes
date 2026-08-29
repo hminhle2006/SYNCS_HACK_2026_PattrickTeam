@@ -1,0 +1,10 @@
+# The exposure table is binary. Without this, a clone on a machine with
+# core.autocrlf enabled could have line endings rewritten inside it, which
+# corrupts the file silently -- the exact failure committing it was meant to
+# avoid. Git usually auto-detects this; state it explicitly rather than rely on
+# detection.
+*.parquet binary
+
+# GeoJSON is text, but it is generated. Keep line endings stable across
+# machines so a Windows checkout does not show every file as modified.
+*.geojson text eol=lf
