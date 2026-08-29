@@ -158,6 +158,61 @@ async function fetchShadows(hour, signal) {
   return response.json();
 }
 
+async function fetchTrees(signal) {
+  const params = new URLSearchParams(TREE_BOUNDS);
+  const response = await fetch(`${API_BASE_URL}/api/trees?${params}`, { signal });
+  if (!response.ok) throw new Error("Tree service is unavailable.");
+  return response.json();
+}
+
+function mapCanopySample(collection) {
+  // The study-area cache can contain thousands of street trees in one view.
+  // The full shade overlay remains visible; this sparse marker set keeps the
+  // walking route itself easy to read.
+  return {
+    ...collection,
+    features: collection.features.filter((_, index) => index % 3 === 0),
+  };
+}
+
+function createTreeMarker() {
+  // A small, hand-drawn canvas icon keeps tree locations readable against the
+  // map at every zoom level without relying on an external icon licence.
+  const canvas = document.createElement("canvas");
+  canvas.width = 48;
+  canvas.height = 56;
+  const context = canvas.getContext("2d");
+  context.scale(2, 2);
+  context.lineJoin = "round";
+
+  context.fillStyle = "rgba(28, 75, 53, 0.18)";
+  context.beginPath();
+  context.ellipse(12, 25.5, 8.4, 2.5, 0, 0, Math.PI * 2);
+  context.fill();
+
+  context.strokeStyle = "#f2fbf4";
+  context.lineWidth = 1.5;
+  context.fillStyle = "#276f49";
+  context.beginPath();
+  context.arc(12, 8.5, 4.9, Math.PI, 0);
+  context.arc(8.25, 12, 4.9, Math.PI * 0.9, Math.PI * 1.9);
+  context.arc(15.75, 12, 4.9, Math.PI * 1.1, Math.PI * 0.1, true);
+  context.arc(12, 15.5, 6.3, 0, Math.PI);
+  context.closePath();
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = "#8ecfa0";
+  context.beginPath();
+  context.arc(10, 9.5, 2.1, 0, Math.PI * 2);
+  context.arc(14.2, 12.3, 1.8, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = "#715433";
+  context.fillRect(10.7, 17, 2.6, 6.5);
+  return context.getImageData(0, 0, canvas.width, canvas.height);
+}
+
 /** Sun exposure across the lit day for one route, so the time dimension is
  *  visible at a glance rather than one hour at a time. One measure, one hue:
  *  pale amber for a shaded hour through deep amber for an exposed one. */
@@ -284,6 +339,10 @@ function App() {
   const [shadePreference, setShadePreference] = useState(0.8);
   const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour(), 0.8));
   const [shadowData, setShadowData] = useState(() => demoShadows(serviceHour()));
+  // Real City of Sydney trees, fetched once. Falls back to the placeholder set
+  // only if the endpoint is unreachable.
+  const [canopyData, setCanopyData] = useState(demoCanopies);
+  const canopyDataRef = useRef(demoCanopies);
   const [uvData, setUvData] = useState(null);
   const [dayProfile, setDayProfile] = useState(null);
   const [isSearching, setIsSearching] = useState(true);
@@ -316,9 +375,13 @@ function App() {
       map.addSource("shadows", { type: "geojson", data: demoShadows(serviceHour()) });
       map.addLayer({ id: "shadow-fill", type: "fill", source: "shadows", paint: { "fill-color": "#4b6870", "fill-opacity": 0.24 } });
       map.addLayer({ id: "shadow-outline", type: "line", source: "shadows", paint: { "line-color": "#7ba1a1", "line-width": 1, "line-opacity": 0.38 } });
-      map.addSource("canopies", { type: "geojson", data: demoCanopies });
-      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 11, "circle-color": "#5da47b", "circle-opacity": 0.12 } });
-      map.addLayer({ id: "canopy-core", type: "circle", source: "canopies", paint: { "circle-radius": 4, "circle-color": "#34745a", "circle-stroke-width": 2, "circle-stroke-color": "#eaf6ee" } });
+      map.addSource("canopies", { type: "geojson", data: canopyDataRef.current });
+      // Canopy pools sized by each tree's measured crown radius.
+      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 12, 8, 26], "circle-color": "#5da47b", "circle-opacity": 0.14, "circle-blur": 0.8 } });
+      map.addImage("tree-marker", createTreeMarker(), { pixelRatio: 2 });
+      // Markers fade out when zoomed out: 4,340 icons at overview zoom is
+      // texture, not information.
+      map.addLayer({ id: "tree-marker", type: "symbol", source: "canopies", layout: { "icon-image": "tree-marker", "icon-size": ["interpolate", ["linear"], ["zoom"], 13, 0.28, 15.25, 0.46, 16, 0.6], "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-pitch-alignment": "viewport", "icon-rotation-alignment": "viewport" }, paint: { "icon-opacity": ["interpolate", ["linear"], ["zoom"], 13, 0.12, 14.5, 0.32, 15.25, 0.65, 16, 1] } });
       map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour(), 0.8)) });
       map.addLayer({ id: "fastest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "fastest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#d68a43", "line-width": 4, "line-opacity": 0.82 } });
       map.addLayer({ id: "coolest-route-outline", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.92 } });
@@ -392,6 +455,14 @@ function App() {
   }, [origin.lat, origin.lon, destinationPlace, shadePreference]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    fetchTrees(controller.signal)
+      .then((trees) => { if (trees.features?.length) setCanopyData(mapCanopySample(trees)); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
@@ -399,8 +470,10 @@ function App() {
     // re-runs when its data changes, so an update that lands mid-load is
     // dropped for good and the map keeps its placeholder layer -- which is why
     // the real shadow overlay never appeared. Defer to the next idle instead.
+    canopyDataRef.current = canopyData;
     const apply = () => {
       map.getSource("routes")?.setData(routeFeatures(routeData));
+      map.getSource("canopies")?.setData(canopyData);
       map.getSource("shadows")?.setData(shadowData);
       map.getSource("endpoints")?.setData(endpointFeatures(origin, destinationPlace));
     };
@@ -411,7 +484,7 @@ function App() {
     }
     map.once("idle", apply);
     return () => map.off("idle", apply);
-  }, [routeData, shadowData, origin, destinationPlace]);
+  }, [routeData, shadowData, canopyData, origin, destinationPlace]);
 
   useEffect(() => {
     if (!isTracking) return undefined;
