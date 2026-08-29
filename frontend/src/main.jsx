@@ -7,6 +7,12 @@ import "./styles.css";
 const API_BASE_URL = "http://localhost:8000";
 const DEMO_ORIGIN = { lat: -33.8913, lon: 151.198 };
 const DEMO_DESTINATION = { lat: -33.887, lon: 151.1902 };
+const DEMO_DESTINATIONS = [
+  { name: "University of Sydney", detail: "Camperdown", lat: -33.887, lon: 151.1902 },
+  { name: "Carriageworks", detail: "Eveleigh", lat: -33.8924, lon: 151.1915 },
+  { name: "Victoria Park", detail: "Broadway, Camperdown", lat: -33.8847, lon: 151.1937 },
+  { name: "Prince Alfred Park", detail: "Surry Hills", lat: -33.8908, lon: 151.2071 },
+];
 const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 const TREE_BOUNDS = { west: 151.186, south: -33.897, east: 151.203, north: -33.882 };
 
@@ -53,14 +59,36 @@ function formatUvDoseChange(percent) {
   return rounded < 0 ? `${Math.abs(rounded)}% more UV dose` : `${rounded}% lower UV dose`;
 }
 
-function demoRouteResponse(hour) {
+function estimateDistanceMeters(origin, destination) {
+  const latitudeMeters = (destination.lat - origin.lat) * 111_320;
+  const longitudeMeters = (destination.lon - origin.lon) * 111_320 * Math.cos(origin.lat * Math.PI / 180);
+  return Math.hypot(latitudeMeters, longitudeMeters);
+}
+
+function demoRouteResponse(hour, destination = DEMO_DESTINATION) {
   const intensity = 1 - Math.min(Math.abs(hour - 14) / 8, 0.72);
   const reduction = Math.round(42 + intensity * 29);
   const addedTime = Math.round(150 + intensity * 110);
+  const directDistance = estimateDistanceMeters(DEMO_ORIGIN, destination);
+  const fastestDuration = Math.max(360, Math.round(directDistance / 1.28));
+  const detour = destination.lon < DEMO_ORIGIN.lon ? -0.00055 : 0.00055;
+  const fastestCoordinates = [
+    [DEMO_ORIGIN.lon, DEMO_ORIGIN.lat],
+    [DEMO_ORIGIN.lon + (destination.lon - DEMO_ORIGIN.lon) * 0.38, DEMO_ORIGIN.lat + (destination.lat - DEMO_ORIGIN.lat) * 0.34],
+    [DEMO_ORIGIN.lon + (destination.lon - DEMO_ORIGIN.lon) * 0.7, DEMO_ORIGIN.lat + (destination.lat - DEMO_ORIGIN.lat) * 0.72],
+    [destination.lon, destination.lat],
+  ];
+  const coolestCoordinates = [
+    [DEMO_ORIGIN.lon, DEMO_ORIGIN.lat],
+    [DEMO_ORIGIN.lon + detour, DEMO_ORIGIN.lat + (destination.lat - DEMO_ORIGIN.lat) * 0.26],
+    [DEMO_ORIGIN.lon + (destination.lon - DEMO_ORIGIN.lon) * 0.46 + detour, DEMO_ORIGIN.lat + (destination.lat - DEMO_ORIGIN.lat) * 0.58],
+    [DEMO_ORIGIN.lon + (destination.lon - DEMO_ORIGIN.lon) * 0.78 + detour * 0.35, DEMO_ORIGIN.lat + (destination.lat - DEMO_ORIGIN.lat) * 0.84],
+    [destination.lon, destination.lat],
+  ];
   return {
     routes: [
-      { type: "fastest", geometry: { type: "LineString", coordinates: [[151.198, -33.8913], [151.1962, -33.89065], [151.19415, -33.8895], [151.19215, -33.8879], [151.1902, -33.887]] }, distance_m: 890, duration_s: 720, exposed_m: 630, exposed_frac: 0.71 },
-      { type: "coolest", geometry: { type: "LineString", coordinates: [[151.198, -33.8913], [151.19745, -33.8898], [151.19625, -33.88825], [151.19465, -33.88725], [151.1927, -33.88655], [151.1902, -33.887]] }, distance_m: 1110, duration_s: 720 + addedTime, exposed_m: 630 * (1 - reduction / 100), exposed_frac: 0.71 * (1 - reduction / 100) },
+      { type: "fastest", geometry: { type: "LineString", coordinates: fastestCoordinates }, distance_m: Math.round(directDistance), duration_s: fastestDuration, exposed_m: directDistance * 0.71, exposed_frac: 0.71 },
+      { type: "coolest", geometry: { type: "LineString", coordinates: coolestCoordinates }, distance_m: Math.round(directDistance + 220), duration_s: fastestDuration + addedTime, exposed_m: directDistance * 0.71 * (1 - reduction / 100), exposed_frac: 0.71 * (1 - reduction / 100) },
     ],
     comparison: { extra_distance_m: 220, extra_duration_s: addedTime, exposure_reduction_m: 630 * reduction / 100, exposure_reduction_pct: reduction },
     meta: { hour, shade_preference: 0.8, timezone: "Australia/Sydney" },
@@ -99,29 +127,29 @@ function routeFeatures(response) {
   return { type: "FeatureCollection", features: response.routes.map((route) => ({ type: "Feature", properties: { routeType: route.type }, geometry: route.geometry })) };
 }
 
-function endpoints(origin) {
+function endpoints(origin, destination = DEMO_DESTINATION) {
   return { type: "FeatureCollection", features: [
     { type: "Feature", properties: { kind: "origin" }, geometry: { type: "Point", coordinates: [origin.lon, origin.lat] } },
-    { type: "Feature", properties: { kind: "destination" }, geometry: { type: "Point", coordinates: [DEMO_DESTINATION.lon, DEMO_DESTINATION.lat] } },
+    { type: "Feature", properties: { kind: "destination" }, geometry: { type: "Point", coordinates: [destination.lon, destination.lat] } },
   ] };
 }
 
-function routeRequest(origin, hour) {
-  return { origin, destination: DEMO_DESTINATION, hour, shade_preference: 0.8 };
+function routeRequest(origin, destination, hour) {
+  return { origin, destination, hour, shade_preference: 0.8 };
 }
 
-async function postRouteResource(path, origin, hour, signal) {
-  const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(routeRequest(origin, hour)), signal });
+async function postRouteResource(path, origin, destination, hour, signal) {
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(routeRequest(origin, destination, hour)), signal });
   if (!response.ok) throw new Error("Route service is unavailable.");
   return response.json();
 }
 
-function fetchRoute(origin, hour, signal) {
-  return postRouteResource("/api/route", origin, hour, signal);
+function fetchRoute(origin, destination, hour, signal) {
+  return postRouteResource("/api/route", origin, destination, hour, signal);
 }
 
-function fetchUvDose(origin, hour, signal) {
-  return postRouteResource("/api/uv-dose", origin, hour, signal);
+function fetchUvDose(origin, destination, hour, signal) {
+  return postRouteResource("/api/uv-dose", origin, destination, hour, signal);
 }
 
 async function fetchShadows(hour, signal) {
@@ -190,8 +218,11 @@ function App() {
   const mapRef = useRef(null);
   const [now, setNow] = useState(() => new Date());
   const [position, setPosition] = useState(DEMO_ORIGIN);
+  const [destination, setDestination] = useState(DEMO_DESTINATIONS[0]);
+  const [searchText, setSearchText] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
-  const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour()));
+  const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour(), DEMO_DESTINATIONS[0]));
   const [shadowData, setShadowData] = useState(() => demoShadows(serviceHour()));
   const [uvDose, setUvDose] = useState(() => demoUvDose(serviceHour()));
   const [canopyData, setCanopyData] = useState(demoCanopies);
@@ -204,6 +235,11 @@ function App() {
   const coolestRoute = routeData.routes.find((route) => route.type === "coolest");
   const shadeCoverage = Math.round((1 - coolestRoute.exposed_frac) * 100);
   const addedMinutes = formatMinutes(routeData.comparison.extra_duration_s);
+  const searchResults = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) return DEMO_DESTINATIONS;
+    return DEMO_DESTINATIONS.filter((place) => `${place.name} ${place.detail}`.toLowerCase().includes(query));
+  }, [searchText]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -235,11 +271,11 @@ function App() {
       // clear as the walker zooms in. They never vanish entirely, so the map
       // retains a soft sense of green cover at every scale.
       map.addLayer({ id: "tree-marker", type: "symbol", source: "canopies", layout: { "icon-image": "tree-marker", "icon-size": ["interpolate", ["linear"], ["zoom"], 13, 0.28, 15.25, 0.46, 16, 0.6], "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-pitch-alignment": "viewport", "icon-rotation-alignment": "viewport" }, paint: { "icon-opacity": ["interpolate", ["linear"], ["zoom"], 13, 0.12, 14.5, 0.32, 15.25, 0.65, 16, 1] } });
-      map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour())) });
+      map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour(), DEMO_DESTINATIONS[0])) });
       map.addLayer({ id: "fastest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "fastest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#d68a43", "line-width": 4, "line-opacity": 0.82 } });
       map.addLayer({ id: "coolest-route-outline", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.92 } });
       map.addLayer({ id: "coolest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#157167", "line-width": 6, "line-opacity": 1 } });
-      map.addSource("endpoints", { type: "geojson", data: endpoints(DEMO_ORIGIN) });
+      map.addSource("endpoints", { type: "geojson", data: endpoints(DEMO_ORIGIN, DEMO_DESTINATIONS[0]) });
       map.addLayer({ id: "endpoint-halo", type: "circle", source: "endpoints", filter: ["==", ["get", "kind"], "origin"], paint: { "circle-radius": 14, "circle-color": "#157167", "circle-opacity": 0.15 } });
       map.addLayer({ id: "endpoints", type: "circle", source: "endpoints", paint: { "circle-radius": ["case", ["==", ["get", "kind"], "origin"], 7, 8], "circle-color": ["case", ["==", ["get", "kind"], "origin"], "#ffffff", "#157167"], "circle-stroke-color": "#17302f", "circle-stroke-width": 2 } });
     });
@@ -253,19 +289,19 @@ function App() {
       setIsLoading(true);
       try {
         const [nextRoutes, nextShadows, nextUvDose] = await Promise.all([
-          fetchRoute(position, hour, controller.signal),
+          fetchRoute(position, destination, hour, controller.signal),
           fetchShadows(hour, controller.signal).catch(() => demoShadows(hour)),
-          fetchUvDose(position, hour, controller.signal).catch(() => demoUvDose(hour)),
+          fetchUvDose(position, destination, hour, controller.signal).catch(() => demoUvDose(hour)),
         ]);
         if (controller.signal.aborted) return;
         setRouteData(nextRoutes); setShadowData(nextShadows); setUvDose(nextUvDose); setIsUsingDemoData(false); setServiceMessage(isTracking ? "Live location is updating your route." : "Route estimate updated from the service.");
       } catch {
         if (controller.signal.aborted) return;
-        setRouteData(demoRouteResponse(hour)); setShadowData(demoShadows(hour)); setUvDose(demoUvDose(hour)); setIsUsingDemoData(true); setServiceMessage(isTracking ? "Outside the demo area — showing the prepared Sydney route." : "Showing the prepared Sydney route.");
+        setRouteData(demoRouteResponse(hour, destination)); setShadowData(demoShadows(hour)); setUvDose(demoUvDose(hour)); setIsUsingDemoData(true); setServiceMessage(isTracking ? "Outside the demo area — showing the prepared Sydney route." : `Showing the prepared route to ${destination.name}.`);
       } finally { if (!controller.signal.aborted) setIsLoading(false); }
     }, 350);
     return () => { controller.abort(); window.clearTimeout(debounce); };
-  }, [position, hour, isTracking]);
+  }, [position, destination, hour, isTracking]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -282,8 +318,8 @@ function App() {
     map.getSource("routes")?.setData(routeFeatures(routeData));
     map.getSource("shadows")?.setData(shadowData);
     map.getSource("canopies")?.setData(canopyData);
-    map.getSource("endpoints")?.setData(endpoints(position));
-  }, [routeData, shadowData, canopyData, position]);
+    map.getSource("endpoints")?.setData(endpoints(position, destination));
+  }, [routeData, shadowData, canopyData, position, destination]);
 
   useEffect(() => {
     if (!isTracking) return undefined;
@@ -302,11 +338,25 @@ function App() {
     setIsTracking(true);
   }
 
+  function selectDestination(place) {
+    setDestination(place);
+    setSearchText(place.name);
+    setIsSearchOpen(false);
+    setServiceMessage(`Finding a shaded route to ${place.name}…`);
+    mapRef.current?.flyTo({ center: [place.lon, place.lat], zoom: 15.5, duration: 850, essential: true });
+  }
+
+  function submitSearch(event) {
+    event.preventDefault();
+    if (searchResults[0]) selectDestination(searchResults[0]);
+  }
+
   return <main className="app-shell">
     <div ref={mapContainer} className="map" aria-label="Interactive Shadeney route map" />
     <div className="map-wash" aria-hidden="true" />
     <header className="brand-panel"><div className="brand-mark" aria-hidden="true">S</div><div><p className="eyebrow">Sydney shade navigation</p><h1>Shadeney</h1></div></header>
-    <section className="journey-card" aria-label="Destination"><p className="journey-label">Destination</p><div className="journey-row"><span className={`journey-dot ${isTracking ? "live" : ""}`} aria-hidden="true" /><p><strong>{isTracking ? "Your live location" : "Redfern Station"}</strong><small>{isTracking ? "GPS tracking active" : "Demo start"}</small></p></div><div className="journey-line" aria-hidden="true" /><div className="journey-row"><span className="journey-dot destination" aria-hidden="true" /><p><strong>University of Sydney</strong><small>Destination</small></p></div></section>
+    <section className="search-panel" aria-label="Destination search"><form className="search-form" onSubmit={submitSearch}><span className="search-icon" aria-hidden="true">⌕</span><label className="sr-only" htmlFor="destination-search">Search a destination</label><input id="destination-search" value={searchText} onFocus={() => setIsSearchOpen(true)} onChange={(event) => { setSearchText(event.target.value); setIsSearchOpen(true); }} placeholder="Search a destination" autoComplete="off" /><button type="submit">Route</button></form>{isSearchOpen && <div className="search-results" role="listbox" aria-label="Sydney demo destinations">{searchResults.length ? searchResults.map((place) => <button key={place.name} type="button" className="search-result" role="option" onClick={() => selectDestination(place)}><span className="search-result-pin" aria-hidden="true">●</span><span><strong>{place.name}</strong><small>{place.detail}</small></span></button>) : <p className="search-empty">Try “University” or “Park”</p>}</div>}</section>
+    <section className="journey-card" aria-label="Destination"><p className="journey-label">Destination</p><div className="journey-row"><span className={`journey-dot ${isTracking ? "live" : ""}`} aria-hidden="true" /><p><strong>{isTracking ? "Your live location" : "Redfern Station"}</strong><small>{isTracking ? "GPS tracking active" : "Demo start"}</small></p></div><div className="journey-line" aria-hidden="true" /><div className="journey-row"><span className="journey-dot destination" aria-hidden="true" /><p><strong>{destination.name}</strong><small>{destination.detail}</small></p></div></section>
     <section className="route-key" aria-label="Map legend"><span><i className="route-swatch fastest" aria-hidden="true" />Fastest</span><span><i className="route-swatch coolest" aria-hidden="true" />More shade</span><span><i className="tree-swatch" aria-hidden="true" />Canopy</span></section>
     <button className={`tracking-button ${isTracking ? "is-active" : ""}`} type="button" onClick={toggleTracking}><span className="tracking-dot" aria-hidden="true" />{isTracking ? "Pause live tracking" : "Start live tracking"}</button>
     <section className="navigation-panel" aria-label="Live route details">
