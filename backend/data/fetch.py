@@ -10,10 +10,12 @@ pins this down; if CLAUDE.md disagrees, CLAUDE.md wins and this changes.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import pickle
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
@@ -98,6 +100,16 @@ TREES_PAGE_SIZE = 2000
 # How often each fallback fired. Goes on the limitations slide -- that kind of
 # honesty scores better than pretending the data was clean.
 FALLBACKS: Counter = Counter()
+
+
+def _bbox_key(bbox) -> str:
+    """Short stable digest of a bbox, so caches for different areas coexist.
+
+    Without this, an on-demand corridor fetch writes to footpaths.pkl and
+    clobbers the precomputed study area.
+    """
+    raw = ",".join(f"{v:.6f}" for v in bbox)
+    return hashlib.sha1(raw.encode()).hexdigest()[:10]
 
 
 def _point_osmnx_cache_into_ours(ox) -> None:
@@ -198,7 +210,7 @@ def fetch_footpaths(bbox: tuple[float, float, float, float]):
         _point_osmnx_cache_into_ours(ox)
         return ox.graph_from_bbox(bbox=bbox, network_type="walk", simplify=True)
 
-    return _cached("footpaths", _fetch)
+    return _cached(f"footpaths_{_bbox_key(bbox)}", _fetch)
 
 
 def fetch_buildings(bbox: tuple[float, float, float, float]) -> gpd.GeoDataFrame:
@@ -214,7 +226,7 @@ def fetch_buildings(bbox: tuple[float, float, float, float]) -> gpd.GeoDataFrame
         keep = [c for c in ("height", "building:levels", "building", "height_m", "geometry") if c in gdf.columns]
         return gdf[keep].to_crs(CRS_METRES).reset_index(drop=True)
 
-    return _cached("buildings", _fetch)
+    return _cached(f"buildings_{_bbox_key(bbox)}", _fetch)
 
 
 def _tree_attributes(props: dict) -> tuple[float, float]:
@@ -254,44 +266,70 @@ def fetch_trees(bbox: tuple[float, float, float, float]) -> gpd.GeoDataFrame:
 
     def _fetch():
         west, south, east, north = bbox
+        def _page(offset: int) -> list[dict]:
+            resp = requests.get(
+                TREES_URL,
+                params={
+                    "where": "1=1",
+                    "outFields": "*",
+                    "geometry": f"{west},{south},{east},{north}",
+                    "geometryType": "esriGeometryEnvelope",
+                    "inSR": "4326",
+                    "spatialRel": "esriSpatialRelIntersects",
+                    "outSR": "4326",
+                    "f": "geojson",
+                    "resultRecordCount": TREES_PAGE_SIZE,
+                    "resultOffset": offset,
+                },
+                timeout=60,
+            )
+            resp.raise_for_status()
+            return resp.json().get("features", [])
+
         features: list[dict] = []
-        offset = 0
         try:
-            while True:
-                resp = requests.get(
-                    TREES_URL,
-                    params={
-                        "where": "1=1",
-                        "outFields": "*",
-                        "geometry": f"{west},{south},{east},{north}",
-                        "geometryType": "esriGeometryEnvelope",
-                        "inSR": "4326",
-                        "spatialRel": "esriSpatialRelIntersects",
-                        "outSR": "4326",
-                        "f": "geojson",
-                        "resultRecordCount": TREES_PAGE_SIZE,
-                        "resultOffset": offset,
-                    },
-                    timeout=60,
-                )
-                resp.raise_for_status()
-                page = resp.json().get("features", [])
-                features.extend(page)
-                log.info("trees: fetched %d (offset %d)", len(page), offset)
-                # A short page means we have reached the end. Without this the
-                # service silently caps at 2000 and you lose most of the canopy.
-                if len(page) < TREES_PAGE_SIZE:
-                    break
-                offset += TREES_PAGE_SIZE
-        except (requests.RequestException, json.JSONDecodeError) as exc:
+            # Ask how many there are, then pull every page at once. Walking
+            # offsets serially costs one round trip per 2000 trees, and for an
+            # on-demand corridor that latency is most of the wait.
+            count_resp = requests.get(
+                TREES_URL,
+                params={
+                    "where": "1=1",
+                    "geometry": f"{west},{south},{east},{north}",
+                    "geometryType": "esriGeometryEnvelope",
+                    "inSR": "4326",
+                    "spatialRel": "esriSpatialRelIntersects",
+                    "returnCountOnly": "true",
+                    "f": "json",
+                },
+                timeout=30,
+            )
+            count_resp.raise_for_status()
+            total = int(count_resp.json().get("count", 0))
+            offsets = list(range(0, max(total, 1), TREES_PAGE_SIZE))
+            log.info("trees: %d records across %d page(s)", total, len(offsets))
+
+            if total:
+                with ThreadPoolExecutor(max_workers=min(8, len(offsets))) as pool:
+                    for page in pool.map(_page, offsets):
+                        features.extend(page)
+        except (requests.RequestException, json.JSONDecodeError, ValueError) as exc:
             log.error("TREE FETCH FAILED (%s) -- continuing buildings-only", exc)
             return gpd.GeoDataFrame(
                 {"crown_radius_m": [], "height_m": [], "geometry": []},
                 crs=CRS_METRES, geometry="geometry",
             )
 
+
         if not features:
-            log.warning("tree service returned zero features for bbox %s", bbox)
+            # Outside the City of Sydney LGA the service legitimately returns
+            # nothing. from_features([]) builds a frame with no geometry
+            # column and then raises on the CRS assignment, so short-circuit.
+            log.warning("no trees in bbox %s -- continuing buildings-only", bbox)
+            return gpd.GeoDataFrame(
+                {"crown_radius_m": [], "height_m": [], "geometry": []},
+                crs=CRS_METRES, geometry="geometry",
+            )
 
         gdf = gpd.GeoDataFrame.from_features(features, crs=CRS_WGS84)
         attrs = [_tree_attributes(f.get("properties") or {}) for f in features]
@@ -300,7 +338,7 @@ def fetch_trees(bbox: tuple[float, float, float, float]) -> gpd.GeoDataFrame:
         gdf = gdf[gdf.geometry.type == "Point"]
         return gdf[["crown_radius_m", "height_m", "geometry"]].to_crs(CRS_METRES).reset_index(drop=True)
 
-    return _cached("trees", _fetch)
+    return _cached(f"trees_{_bbox_key(bbox)}", _fetch)
 
 
 def fallback_report() -> str:
