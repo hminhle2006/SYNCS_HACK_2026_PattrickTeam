@@ -186,10 +186,11 @@ function App() {
           map.setPaintProperty(layer.id, "fill-opacity", 0.98);
         });
       map.addSource("shadows", { type: "geojson", data: demoShadows(serviceHour()) });
-      map.addLayer({ id: "shadow-fill", type: "fill", source: "shadows", paint: { "fill-color": "#3e5257", "fill-opacity": 0.19, "fill-antialias": true } });
+      map.addLayer({ id: "shadow-fill", type: "fill", source: "shadows", paint: { "fill-color": "#3e5257", "fill-opacity": 0.22, "fill-antialias": true } });
+      map.addLayer({ id: "shadow-soft-edge", type: "line", source: "shadows", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#526d72", "line-width": 3, "line-opacity": 0.18, "line-blur": 2.2 } });
       map.addSource("canopies", { type: "geojson", data: canopyDataRef.current });
-      map.addLayer({ id: "canopy-shade", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 11, 8, 22], "circle-color": "#4f9b68", "circle-opacity": 0.12, "circle-blur": 0.86 } });
-      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 6, "circle-color": "#4b9a62", "circle-opacity": 0.2 } });
+      map.addLayer({ id: "canopy-shade", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 13, 8, 25], "circle-color": "#4f9b68", "circle-opacity": 0.15, "circle-blur": 0.96 } });
+      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 6.5, "circle-color": "#4b9a62", "circle-opacity": 0.23 } });
       map.addLayer({ id: "canopy-core", type: "circle", source: "canopies", paint: { "circle-radius": 3.3, "circle-color": "#176440", "circle-stroke-width": 1, "circle-stroke-color": "#eaf6ec" } });
       map.addLayer({ id: "canopy-glint", type: "circle", source: "canopies", paint: { "circle-radius": 0.9, "circle-color": "#dff4e5" } });
       map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour())) });
