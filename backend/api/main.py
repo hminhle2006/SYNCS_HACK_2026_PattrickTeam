@@ -41,6 +41,41 @@ def _load_shadow_file(hour: int) -> dict | None:
     return None
 
 
+def _tree_feature_collection(
+    west: float, south: float, east: float, north: float
+) -> dict:
+    """Return City of Sydney tree points visible in the requested map bounds.
+
+    The generated cache already contains the complete City of Sydney tree
+    dataset used by the shadow model.  Reading it avoids a live ArcGIS request
+    when the frontend needs to visualise the canopy.
+    """
+    from backend.config import BBOX, GEOGRAPHIC_CRS
+    from backend.data.fetch import fetch_trees
+
+    trees = fetch_trees(BBOX)
+    if trees.empty:
+        return {"type": "FeatureCollection", "features": []}
+
+    visible = trees.to_crs(GEOGRAPHIC_CRS).cx[west:east, south:north]
+    features = []
+    for row in visible.itertuples():
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "crown_radius_m": round(float(row.crown_radius_m), 1),
+                    "height_m": round(float(row.height_m), 1),
+                },
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [row.geometry.x, row.geometry.y],
+                },
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load the routing graph and shadow caches once, never per request."""
@@ -257,3 +292,24 @@ def shadows(hour: int = Query(ge=MIN_HOUR, le=MAX_HOUR)) -> JSONResponse:
             f"Shadow data for hour {hour} has not been generated yet.",
         )
     return JSONResponse(content=collection)
+
+
+@app.get("/api/trees")
+def trees(
+    west: float = Query(ge=-180.0, le=180.0),
+    south: float = Query(ge=-90.0, le=90.0),
+    east: float = Query(ge=-180.0, le=180.0),
+    north: float = Query(ge=-90.0, le=90.0),
+) -> JSONResponse:
+    """Serve cached City of Sydney canopy points for the current map view."""
+    if west >= east or south >= north:
+        return _error(422, "INVALID_COORDINATES", "Map bounds are invalid.")
+    try:
+        return JSONResponse(content=_tree_feature_collection(west, south, east, north))
+    except Exception:
+        logger.exception("tree cache could not be read")
+        return _error(
+            503,
+            "CACHE_NOT_READY",
+            "Tree data has not been generated yet.",
+        )
