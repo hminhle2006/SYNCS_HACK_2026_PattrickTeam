@@ -32,7 +32,20 @@ def segment_exposure(
     if shadows.empty:
         return pd.Series(exposed, index=segments.index, name="exposed_frac")
 
-    shadow_geoms = list(shadows.geometry)
+    # Explode first. cast_shadows returns ONE dissolved multipolygon, so an
+    # STRtree built over it would hold a single entry whose bbox covers the
+    # whole study area -- every segment "hits", nothing is filtered, and we
+    # fall back to an expensive intersection against the full multipolygon per
+    # segment. Exploding into component polygons is what makes the index work.
+    shadow_geoms = []
+    for geom in shadows.geometry:
+        if geom is None or geom.is_empty:
+            continue
+        shadow_geoms.extend(getattr(geom, "geoms", [geom]))
+
+    if not shadow_geoms:
+        return pd.Series(exposed, index=segments.index, name="exposed_frac")
+
     tree = STRtree(shadow_geoms)
 
     for i, (geom, length) in enumerate(zip(segments.geometry, total)):
@@ -65,4 +78,15 @@ def graph_to_segments(graph) -> gpd.GeoDataFrame:
     keep = [c for c in ("u", "v", "key", "name", "highway", "geometry") if c in edges.columns]
     segments = edges[keep].copy()
     segments["length_m"] = segments.geometry.length
+
+    # osmnx simplification merges consecutive ways, so attributes like `name`
+    # and `highway` come back as LISTS on merged edges while staying plain
+    # strings elsewhere. Parquet cannot serialise that mixed column, and the
+    # failure only surfaces at write time -- after the whole pipeline has run.
+    for col in ("name", "highway"):
+        if col in segments.columns:
+            segments[col] = segments[col].map(
+                lambda v: "; ".join(str(x) for x in v) if isinstance(v, (list, tuple)) else
+                ("" if v is None else str(v))
+            )
     return segments
