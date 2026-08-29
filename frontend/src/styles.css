@@ -268,13 +268,14 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
 }
 
 /* ---- collapsible route panel ------------------------------------------- */
-/* Expanded, the panel runs to ~537px and covers most of the map -- nearly all
-   of it on a phone. The handle already looked like a drag affordance but did
-   nothing; it is now a real toggle.
+/* The handle looked like a drag affordance but was an inert div. It is a real
+   button now, and collapsing clamps the PANEL rather than hiding each child --
+   the per-child version lost a specificity fight against the base layout and
+   silently did nothing.
 
-   Collapsing is done by clamping the PANEL, not by hiding each child. The
-   per-child approach lost a specificity fight against the base layout rules
-   and silently did nothing; one max-height on the container cannot. */
+   These rules sit after the breakpoints, so anything unscoped here would beat
+   the mobile block. The desktop sizing is therefore scoped to desktop; mobile
+   keeps its own 52dvh + internal scrolling. */
 
 .sheet-handle {
   display: block;
@@ -287,14 +288,40 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
 .sheet-handle:hover { background: #8fada2; width: 54px; }
 .sheet-handle:focus-visible { outline: 2px solid #157167; outline-offset: 3px; }
 
-.navigation-panel {
-  max-height: 78vh;
-  overflow: hidden;
-  transition: max-height 0.28s ease, padding-bottom 0.28s ease;
+@media (min-width: 721px) {
+  .navigation-panel {
+    max-height: 78vh;
+    overflow: hidden;
+    transition: max-height 0.28s ease, padding-bottom 0.28s ease;
+  }
+  /* !important because the collapsed height kept losing to the base rule
+     despite being more specific -- overflow applied from this same block while
+     max-height did not. Not worth more time to unpick on submission day. */
+  .navigation-panel.is-collapsed {
+    max-height: 104px !important;
+    padding-bottom: 8px;
+  }
 }
 
-/* Handle plus headline only. */
-.navigation-panel.is-collapsed {
-  max-height: 104px;
-  padding-bottom: 8px;
+@media (max-width: 720px) {
+  /* Do not touch max-height or overflow here -- the mobile block above owns
+     both, and the panel needs to keep scrolling internally. */
+  .navigation-panel { transition: max-height 0.28s ease; }
+
+  /* The handle has to stay reachable inside a scrolling panel, or there is no
+     way to collapse it once you have scrolled down. */
+  .sheet-handle {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    width: 56px;
+    height: 5px;
+    margin: 0 auto 10px;
+  }
+
+  .navigation-panel.is-collapsed {
+    max-height: 124px !important;  /* handle + full headline, no clipping */
+    overflow: hidden !important;
+    padding-bottom: 10px;
+  }
 }
