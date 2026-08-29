@@ -134,7 +134,9 @@ def tree_shadows(
         return gpd.GeoDataFrame({"geometry": []}, crs=CRS_METRES, geometry="geometry")
 
     discs = trees.copy()
+    # resolution=4 gives a 16-gon. GeoSeries.buffer already forwards this to
+    # shapely as quad_segs, so passing quad_segs directly collides with it.
     discs["geometry"] = discs.geometry.buffer(
-        discs[crown_col].fillna(DEFAULT_CROWN_RADIUS_M), quad_segs=4
+        discs[crown_col].fillna(DEFAULT_CROWN_RADIUS_M), resolution=4
     )
     return cast_shadows(discs, azimuth_deg, elevation_deg, height_col=height_col)

@@ -49,6 +49,16 @@ TREES_PAGE_SIZE = 2000
 FALLBACKS: Counter = Counter()
 
 
+def _point_osmnx_cache_into_ours(ox) -> None:
+    """Keep osmnx's HTTP cache inside backend/cache/.
+
+    Left alone it writes to ./cache at the repository root, which is not in
+    .gitignore -- so every teammate who runs the pipeline commits a pile of
+    hashed response blobs. backend/cache/ is already excluded.
+    """
+    ox.settings.cache_folder = str(CACHE_DIR / "osmnx")
+
+
 def _cached(name: str, fn: Callable, binary: bool = True):
     """Run fn() once, persist the result, reuse it forever after."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -103,6 +113,7 @@ def fetch_footpaths(bbox: tuple[float, float, float, float]):
     def _fetch():
         import osmnx as ox
 
+        _point_osmnx_cache_into_ours(ox)
         return ox.graph_from_bbox(bbox=bbox, network_type="walk", simplify=True)
 
     return _cached("footpaths", _fetch)
@@ -114,6 +125,7 @@ def fetch_buildings(bbox: tuple[float, float, float, float]) -> gpd.GeoDataFrame
     def _fetch():
         import osmnx as ox
 
+        _point_osmnx_cache_into_ours(ox)
         gdf = ox.features_from_bbox(bbox=bbox, tags={"building": True})
         gdf = gdf[gdf.geometry.type.isin(["Polygon", "MultiPolygon"])].copy()
         gdf["height_m"] = [resolve_height(row) for _, row in gdf.iterrows()]
