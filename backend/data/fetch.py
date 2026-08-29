@@ -63,11 +63,17 @@ def _cached(name: str, fn: Callable, binary: bool = True):
     """Run fn() once, persist the result, reuse it forever after."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = CACHE_DIR / f"{name}.pkl"
+    stats_path = CACHE_DIR / f"{name}_stats.json"
     if path.exists():
         try:
             with path.open("rb") as fh:
                 value = pickle.load(fh)
             log.info("cache hit: %s", path.name)
+            # The tally is built while resolving attributes during a fetch, so
+            # a cache hit would otherwise report nothing -- and that tally is
+            # the limitations-slide number. Replay what this cache recorded.
+            if stats_path.exists():
+                FALLBACKS.update(json.loads(stats_path.read_text(encoding="utf-8")))
             return value
         except Exception as exc:
             # Pickle is fragile across library versions: a cache written under
@@ -82,7 +88,12 @@ def _cached(name: str, fn: Callable, binary: bool = True):
             path.unlink(missing_ok=True)
 
     log.info("cache miss: fetching %s", name)
+    before = Counter(FALLBACKS)
     value = fn()
+    # Counter subtraction drops non-positive entries, leaving only what this
+    # fetch contributed, so the sidecar stays correct when replayed later.
+    stats_path.write_text(json.dumps(dict(FALLBACKS - before)), encoding="utf-8")
+
     with path.open("wb") as fh:
         pickle.dump(value, fh)
     return value
@@ -238,9 +249,16 @@ def fallback_report() -> str:
     """Human-readable tally for the limitations slide."""
     if not FALLBACKS:
         return "no data resolved yet"
-    total = sum(v for k, v in FALLBACKS.items() if k.startswith(("height", "levels", "default")))
-    lines = ["Data quality -- how each attribute was resolved:"]
-    for key, count in sorted(FALLBACKS.items(), key=lambda kv: -kv[1]):
-        share = f" ({100 * count / total:.0f}%)" if total and not key.startswith("tree") else ""
-        lines.append(f"  {key:<24} {count:>6}{share}")
-    return "\n".join(lines)
+
+    buildings = {k: v for k, v in FALLBACKS.items() if not k.startswith("tree")}
+    trees = {k: v for k, v in FALLBACKS.items() if k.startswith("tree")}
+
+    out = ["Data quality -- how each attribute was resolved:"]
+    for label, group in (("buildings", buildings), ("trees", trees)):
+        if not group:
+            continue
+        total = sum(group.values())
+        out.append(f"  {label} ({total:,} resolutions)")
+        for key, count in sorted(group.items(), key=lambda kv: -kv[1]):
+            out.append(f"    {key:<24} {count:>7,}  ({100 * count / total:5.1f}%)")
+    return "\n".join(out)
