@@ -64,9 +64,22 @@ def _cached(name: str, fn: Callable, binary: bool = True):
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = CACHE_DIR / f"{name}.pkl"
     if path.exists():
-        log.info("cache hit: %s", path.name)
-        with path.open("rb") as fh:
-            return pickle.load(fh)
+        try:
+            with path.open("rb") as fh:
+                value = pickle.load(fh)
+            log.info("cache hit: %s", path.name)
+            return value
+        except Exception as exc:
+            # Pickle is fragile across library versions: a cache written under
+            # pandas 3.x raises TypeError when loaded under 2.x, deep inside
+            # pickle.load where the cause is not obvious. Teammates on
+            # different pins would each hit this. Refetching costs ~80s and
+            # always works, so treat any load failure as a cache miss.
+            log.warning(
+                "cache %s unreadable (%s: %s) -- refetching",
+                path.name, type(exc).__name__, exc,
+            )
+            path.unlink(missing_ok=True)
 
     log.info("cache miss: fetching %s", name)
     value = fn()
