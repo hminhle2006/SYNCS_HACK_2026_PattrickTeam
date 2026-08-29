@@ -231,7 +231,9 @@ function App() {
       // cooler charcoal geometry used for building shadows above.
       map.addLayer({ id: "canopy-shade", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 16, 8, 32], "circle-color": "#88cf9d", "circle-opacity": 0.31, "circle-blur": 0.96 } });
       map.addImage("tree-marker", createTreeMarker(), { pixelRatio: 2 });
-      map.addLayer({ id: "tree-marker", type: "symbol", source: "canopies", layout: { "icon-image": "tree-marker", "icon-size": ["interpolate", ["linear"], ["zoom"], 14, 0.42, 16, 0.6], "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-pitch-alignment": "viewport", "icon-rotation-alignment": "viewport" } });
+      // Keep the canopy shade at every zoom, but only show individual trees
+      // once there is enough map detail for the markers to remain useful.
+      map.addLayer({ id: "tree-marker", type: "symbol", source: "canopies", minzoom: 15.25, layout: { "icon-image": "tree-marker", "icon-size": ["interpolate", ["linear"], ["zoom"], 15.25, 0.46, 16, 0.6], "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-pitch-alignment": "viewport", "icon-rotation-alignment": "viewport" } });
       map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour())) });
       map.addLayer({ id: "fastest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "fastest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#d68a43", "line-width": 4, "line-opacity": 0.82 } });
       map.addLayer({ id: "coolest-route-outline", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.92 } });
