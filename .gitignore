@@ -24,3 +24,9 @@ frontend/dist/
 .DS_Store
 .vscode/
 .idea/
+# Generated pipeline caches
+cache/
+**/cache/*
+!**/cache/.gitkeep
+*.parquet
+*.geojson
