@@ -11,8 +11,28 @@ const MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json
 
 const emptyFeatures = { type: "FeatureCollection", features: [] };
 
+// The shade model runs 06:00-19:00, but at 06, 18 and 19 the sun is BELOW the
+// horizon in Sydney, so every segment is fully shaded and both routes score
+// identically. Clamping to those hours makes the app report "100% shaded,
+// 0% less sun" all night -- which reads as a product that does nothing.
+// Outside daylight we preview the recommended hour instead.
+const FIRST_LIT_HOUR = 7;
+const LAST_LIT_HOUR = 17;
+const PREVIEW_HOUR = 14;
+
+function isDaylight(date = new Date()) {
+  const h = date.getHours();
+  return h >= FIRST_LIT_HOUR && h <= LAST_LIT_HOUR;
+}
+
 function serviceHour(date = new Date()) {
-  return Math.max(6, Math.min(19, date.getHours()));
+  return isDaylight(date) ? date.getHours() : PREVIEW_HOUR;
+}
+
+function formatHourLabel(hour) {
+  const d = new Date();
+  d.setHours(hour, 0, 0, 0);
+  return new Intl.DateTimeFormat("en-AU", { hour: "numeric" }).format(d);
 }
 
 function formatClock(date) {
@@ -170,7 +190,7 @@ function App() {
     <button className={`tracking-button ${isTracking ? "is-active" : ""}`} type="button" onClick={toggleTracking}><span className="tracking-dot" aria-hidden="true" />{isTracking ? "Pause live tracking" : "Start live tracking"}</button>
     <section className="navigation-panel" aria-label="Live route details">
       <div className="sheet-handle" aria-hidden="true" />
-      <div className="sheet-heading"><div><p className="panel-kicker">Live shade route</p><h2>{shadeCoverage}% <span>shaded</span></h2><p className="panel-subtitle">Sun estimate for {formatClock(now)}</p></div><div className="route-duration"><strong>{formatMinutes(coolestRoute.duration_s)}</strong><span>{Math.round(coolestRoute.distance_m / 100) / 10} km</span></div></div>
+      <div className="sheet-heading"><div><p className="panel-kicker">Live shade route</p><h2>{shadeCoverage}% <span>shaded</span></h2><p className="panel-subtitle">{isDaylight(now) ? `Sun estimate for ${formatClock(now)}` : `Outside daylight — previewing ${formatHourLabel(hour)}`}</p></div><div className="route-duration"><strong>{formatMinutes(coolestRoute.duration_s)}</strong><span>{Math.round(coolestRoute.distance_m / 100) / 10} km</span></div></div>
       <div className="route-cards" aria-label="Route comparison"><article className="route-card recommended"><div className="route-card-icon" aria-hidden="true">☂</div><div className="route-card-copy"><p>More shade</p><strong>{addedMinutes} longer · {Math.round(routeData.comparison.exposure_reduction_pct)}% less sun</strong><div className="exposure-meter" aria-label={`${shadeCoverage}% of the recommended route is shaded`}><span style={{ width: `${shadeCoverage}%` }} /></div></div><span className="recommended-tag">Best match</span></article><article className="route-card"><div className="route-card-icon warm" aria-hidden="true">☀</div><div className="route-card-copy"><p>Fastest</p><strong>{formatMinutes(fastestRoute.duration_s)} · more sun</strong><div className="exposure-meter warm-meter" aria-label="The fastest route has higher direct sun exposure"><span /></div></div></article></div>
       <div className="live-strip"><span className={`live-indicator ${isTracking ? "is-live" : ""}`} aria-hidden="true" /> <strong>{isTracking ? "Tracking your location" : "Demo navigation"}</strong><span>{isLoading ? "Updating…" : "Refreshes as you move"}</span></div>
       <p className={`service-note ${isUsingDemoData ? "is-demo" : ""}`} role="status">{serviceMessage}</p>
