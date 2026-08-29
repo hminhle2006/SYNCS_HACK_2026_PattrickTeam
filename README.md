@@ -65,10 +65,27 @@ The health endpoint is available at:
 http://localhost:8000/api/health
 ```
 
+### Generated data cache (required)
+
+The shadow and exposure data is generated, not committed, so a fresh clone gives
+you the full source and a non-functional app. Unzip `shadeney-cache.zip` into
+`backend/cache/` before starting the backend:
+
+```text
+backend/cache/segments.parquet                        2.4 MB
+backend/cache/shadows_06.geojson … shadows_19.geojson  14 files
+backend/cache/validation_09.png, _14.png, _17.png      slide material
+```
+
+Without it, `/api/route` falls back to a synthetic stand-in graph and
+`/api/shadows` returns `CACHE_NOT_READY`. To regenerate from source instead, run
+`python -m backend.geo.pipeline` — this goes through the Overpass API and takes
+several minutes, so prefer the zip near a deadline.
+
 ### Frontend
 
 ```bash
-npm install
+npm install --prefix frontend
 npm run dev
 ```
 
@@ -91,6 +108,10 @@ Before Lane B provides `backend/cache/segments.parquet`, the integration check v
 - `GET /api/health`
 - `POST /api/route`
 - `GET /api/shadows?hour=14`
+- `GET /api/uv?hour=14` — UV index for the hour, live from ARPANSA when that hour
+  is the current one, otherwise a clear-sky model estimate
+- `POST /api/uv-dose` — same request body as `/api/route`; returns the UV dose in
+  SED and minutes-to-burn for both routes
 
 The stable request and response schemas are documented in [`CLAUDE.md`](CLAUDE.md) and implemented in `backend/api/schemas.py`.
 
@@ -101,14 +122,41 @@ The stable request and response schemas are documented in [`CLAUDE.md`](CLAUDE.m
 
 ## Validation and limitations
 
-Planned validation includes a synthetic shadow-direction test, exact segment-exposure cases, solar-position sanity checks and a visual comparison of computed shadows with a known place and timestamp.
+The shadow model is tested and visually validated, not asserted:
 
-Known limitations for the first prototype:
+- **Shadow direction and length.** Synthetic cases pin that a due-north sun casts
+  its shadow due south, a due-east sun casts west, a lower sun casts a longer
+  shadow, and a sun below the horizon shades everything.
+- **Exact segment exposure.** Fully shaded, fully exposed and half-shaded
+  segments are checked against exact expected values, using a real geometric
+  difference rather than point sampling.
+- **Solar position.** Sydney afternoon sun is confirmed to be north-west and high.
+- **Visual comparison.** `backend/cache/validation_{09,14,17}.png` overlay the
+  computed shadows on Esri satellite imagery of Martin Place, so the model can be
+  checked against a place anyone in the room recognises.
+- **Honest UV.** A test pins that full shade still delivers the diffuse
+  component, so the claim "N% shaded means N% less UV" cannot be expressed.
 
-- Building and tree heights may require documented fallback estimates.
-- Tree canopy is initially treated as opaque.
-- Weather, construction, traffic crossings, air quality and personal heat risk are outside the routing model.
-- Results are estimates and should be described as lower exposure, not guaranteed safety.
+Run the suite with `python -m pytest` (22 tests).
+
+Measured limitations, from the data-quality tally the pipeline records:
+
+- **Building heights are mostly inferred.** Only 1.4% are surveyed values; 43.6%
+  are derived from floor count, 29.1% estimated from building type, and 25.9%
+  fall back to a generic 10 m. Tree data is near-complete by comparison: 5
+  fallbacks across 23,655 trees.
+- **Shade is not the absence of UV.** Roughly 40–50% of ground-level UV is
+  diffuse skylight, so a fully shaded route still delivers about half the UV of
+  open sun. The app reports "less direct sun", and the UV dose endpoint models
+  the diffuse term explicitly.
+- **Tree canopy is treated as opaque**, which overstates the shade under sparse
+  or deciduous crowns.
+- **Hours 06:00, 18:00 and 19:00 sit below the horizon**, so every segment scores
+  as fully shaded. The interface limits shade routing to 07:00–17:00.
+- Weather, construction, traffic crossings, air quality and personal heat risk
+  are outside the routing model.
+- Results are estimates and should be described as lower exposure, not
+  guaranteed safety.
 
 ## Team and contributions
 
@@ -116,10 +164,10 @@ This table must be updated continuously and checked against Git history before s
 
 | Member | Role and contribution |
 |---|---|
-| Duc Anh Luong | Lane A: shared contracts, scaffold, integration pipeline, release coordination, README and pitch support |
-| Hieu Minh Le | TODO |
-| Team member 3 | TODO |
-| Team member 4 | TODO |
+| Duc Anh Luong | Lane A: shared contracts and API schemas, repository scaffold, `scripts/run_pipeline.py` integration check, release coordination, README and pitch support |
+| Hieu Minh Le | Lane B: data acquisition (`backend/data/`), solar geometry, shadow casting and segment exposure (`backend/geo/`), the 30,670-edge exposure cache, UV dose model, and shadow/UV test suites. Directed and reviewed the Lane C backend work |
+| phibichubi | Lane D: React map interface, live navigation UI, MapLibre layers and the Vite worker fix that unblocked vector-tile rendering |
+| _(fourth member — replace or delete this row before submitting)_ | |
 
 ## Credits and third-party material
 
@@ -140,6 +188,8 @@ Record every dependency, dataset, tile provider, icon, font and asset as it is i
 | MapLibre GL JS | MapLibre contributors | BSD-3-Clause | Interactive map rendering |
 | CARTO basemap tiles | CARTO | Free tier, attribution required | Dark basemap under the route overlay |
 | ARPANSA UV index | Australian Radiation Protection and Nuclear Safety Agency | Public data | Live UV index for Sydney |
+| Esri World Imagery | Esri, via `contextily` | Esri terms — attribution required | Satellite basemap in the shadow validation figures |
+| Claude Code | Anthropic | Commercial tool | AI pair programming; assisted commits carry a co-author trailer and are visible in the Git history |
 
 **In-app attribution.** ODbL and CC BY both require credit where the data is
 shown, not only here. The map footer must carry:
@@ -149,11 +199,11 @@ shown, not only here. The map footer must carry:
 ## Submission checklist
 
 - [x] Public Git repository
-- [ ] Maintained multi-contributor commit history
+- [x] Maintained multi-contributor commit history
 - [x] Succinct project description and features
 - [ ] Demo video, no longer than 3 minutes, with public viewing permission
 - [ ] Live demo URL, if deployed
-- [x] Open-source and third-party credits started
-- [ ] Final per-member contribution summary
-- [ ] Validation image and honest limitations
+- [x] Open-source and third-party credits
+- [ ] Final per-member contribution summary — three rows evidenced from Git history; the fourth needs a name or removal
+- [x] Validation image and honest limitations
 - [ ] Devpost submission before 12:00 pm AEST on Sunday, 30 August 2026
