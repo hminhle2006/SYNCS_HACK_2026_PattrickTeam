@@ -122,12 +122,21 @@ function App() {
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: "metric" }), "bottom-right");
     map.on("load", () => {
+      // The light basemap remains calm, while buildings get enough definition to be legible at a glance.
+      map.getStyle().layers
+        .filter((layer) => layer.type === "fill" && /building|structure/i.test(layer.id))
+        .forEach((layer) => {
+          map.setPaintProperty(layer.id, "fill-color", "#d3dcd8");
+          map.setPaintProperty(layer.id, "fill-outline-color", "#879990");
+          map.setPaintProperty(layer.id, "fill-opacity", 0.96);
+        });
       map.addSource("shadows", { type: "geojson", data: demoShadows(serviceHour()) });
       map.addLayer({ id: "shadow-fill", type: "fill", source: "shadows", paint: { "fill-color": "#4b6870", "fill-opacity": 0.24 } });
       map.addLayer({ id: "shadow-outline", type: "line", source: "shadows", paint: { "line-color": "#7ba1a1", "line-width": 1, "line-opacity": 0.38 } });
       map.addSource("canopies", { type: "geojson", data: demoCanopies });
-      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 11, "circle-color": "#5da47b", "circle-opacity": 0.12 } });
-      map.addLayer({ id: "canopy-core", type: "circle", source: "canopies", paint: { "circle-radius": 4, "circle-color": "#34745a", "circle-stroke-width": 2, "circle-stroke-color": "#eaf6ee" } });
+      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 17, "circle-color": "#4f9b68", "circle-opacity": 0.19 } });
+      map.addLayer({ id: "canopy-core", type: "circle", source: "canopies", paint: { "circle-radius": 7, "circle-color": "#27754c", "circle-stroke-width": 2, "circle-stroke-color": "#f4fbf6" } });
+      map.addLayer({ id: "canopy-glint", type: "circle", source: "canopies", paint: { "circle-radius": 2, "circle-color": "#dff4e5" } });
       map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour())) });
       map.addLayer({ id: "fastest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "fastest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#d68a43", "line-width": 4, "line-opacity": 0.82 } });
       map.addLayer({ id: "coolest-route-outline", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.92 } });
