@@ -73,6 +73,25 @@ class HealthResponse(StrictModel):
     version: str
 
 
+class UVIndex(StrictModel):
+    hour: int = Field(ge=6, le=19)
+    uv_index: float = Field(ge=0.0)
+    source: Literal["arpansa", "clear-sky model"]
+    is_live: bool
+    observed_at: str | None = None
+
+
+class UVDoseResponse(StrictModel):
+    uv: UVIndex
+    fastest_sed: float = Field(ge=0.0)
+    coolest_sed: float = Field(ge=0.0)
+    uv_reduction_sed: float
+    uv_reduction_pct: float
+    fastest_minutes_to_burn: float | None
+    coolest_minutes_to_burn: float | None
+    meta: RouteMeta
+
+
 class ErrorDetail(StrictModel):
     code: Literal[
         "INVALID_COORDINATES",
