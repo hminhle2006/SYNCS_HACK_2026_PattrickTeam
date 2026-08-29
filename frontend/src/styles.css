@@ -185,6 +185,11 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
    nothing. */
 
 @media (max-width: 620px) {
+  /* THE root cause of the phone layout. body carries min-width: 1100px, so
+     every device lays out an 1100px page and scrolls around inside it. The
+     breakpoints below were firing correctly all along; they simply could not
+     beat a body that refuses to be narrower than a laptop. */
+  body { min-width: 0; }
   html, body { overflow-x: hidden; }
 
   .navigation-panel {
