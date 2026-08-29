@@ -128,7 +128,7 @@ Record every dependency, dataset, tile provider, icon, font and asset as it is i
 | What | Source | Licence | Use |
 |---|---|---|---|
 | OpenStreetMap data | OpenStreetMap contributors | ODbL | Walking network and building footprints |
-| City of Sydney open data | City of Sydney | Confirm dataset-specific terms | Tree locations and attributes |
+| City of Sydney Trees | City of Sydney | **CC BY 4.0 — attribution required in-app** | 23,655 tree locations, height and canopy spread |
 | OSMnx | Open source project | MIT | OpenStreetMap download and graph utilities |
 | GeoPandas | Open source project | BSD-3-Clause | Geospatial tables and operations |
 | Shapely | Open source project | BSD-3-Clause | Geometry and shadow intersections |
@@ -137,10 +137,14 @@ Record every dependency, dataset, tile provider, icon, font and asset as it is i
 | FastAPI | Open source project | MIT | Backend API |
 | React | Meta and contributors | MIT | Frontend user interface |
 | Vite | Open source project | MIT | Frontend development and build |
-| MapLibre GL JS | MapLibre contributors | BSD-3-Clause | Planned interactive map rendering |
-| Tailwind CSS | Tailwind Labs | MIT | Planned interface styling |
+| MapLibre GL JS | MapLibre contributors | BSD-3-Clause | Interactive map rendering |
+| CARTO basemap tiles | CARTO | Free tier, attribution required | Dark basemap under the route overlay |
+| ARPANSA UV index | Australian Radiation Protection and Nuclear Safety Agency | Public data | Live UV index for Sydney |
 
-Map tiles, icons and fonts must be added here with their exact provider and licence before use.
+**In-app attribution.** ODbL and CC BY both require credit where the data is
+shown, not only here. The map footer must carry:
+
+> Map data © OpenStreetMap contributors · Tree data © City of Sydney (CC BY 4.0)
 
 ## Submission checklist
 

@@ -30,3 +30,6 @@ cache/
 !**/cache/.gitkeep
 *.parquet
 *.geojson
+
+# Lane B handoff bundle: 78 MB of generated data for teammates, not source.
+handoff/
