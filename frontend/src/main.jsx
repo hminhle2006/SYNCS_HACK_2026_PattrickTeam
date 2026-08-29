@@ -147,6 +147,44 @@ function mapCanopySample(collection) {
   };
 }
 
+function createTreeMarker() {
+  // A small, hand-drawn canvas icon keeps tree locations readable against the
+  // map at every zoom level without relying on an external icon licence.
+  const canvas = document.createElement("canvas");
+  canvas.width = 48;
+  canvas.height = 56;
+  const context = canvas.getContext("2d");
+  context.scale(2, 2);
+  context.lineJoin = "round";
+
+  context.fillStyle = "rgba(28, 75, 53, 0.18)";
+  context.beginPath();
+  context.ellipse(12, 25.5, 8.4, 2.5, 0, 0, Math.PI * 2);
+  context.fill();
+
+  context.strokeStyle = "#f2fbf4";
+  context.lineWidth = 1.5;
+  context.fillStyle = "#276f49";
+  context.beginPath();
+  context.arc(12, 8.5, 4.9, Math.PI, 0);
+  context.arc(8.25, 12, 4.9, Math.PI * 0.9, Math.PI * 1.9);
+  context.arc(15.75, 12, 4.9, Math.PI * 1.1, Math.PI * 0.1, true);
+  context.arc(12, 15.5, 6.3, 0, Math.PI);
+  context.closePath();
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = "#8ecfa0";
+  context.beginPath();
+  context.arc(10, 9.5, 2.1, 0, Math.PI * 2);
+  context.arc(14.2, 12.3, 1.8, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = "#715433";
+  context.fillRect(10.7, 17, 2.6, 6.5);
+  return context.getImageData(0, 0, canvas.width, canvas.height);
+}
+
 function App() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
@@ -189,10 +227,11 @@ function App() {
       map.addLayer({ id: "shadow-fill", type: "fill", source: "shadows", paint: { "fill-color": "#3e5257", "fill-opacity": 0.22, "fill-antialias": true } });
       map.addLayer({ id: "shadow-soft-edge", type: "line", source: "shadows", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#526d72", "line-width": 3, "line-opacity": 0.18, "line-blur": 2.2 } });
       map.addSource("canopies", { type: "geojson", data: canopyDataRef.current });
-      map.addLayer({ id: "canopy-shade", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 13, 8, 25], "circle-color": "#4f9b68", "circle-opacity": 0.15, "circle-blur": 0.96 } });
-      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 6.5, "circle-color": "#4b9a62", "circle-opacity": 0.23 } });
-      map.addLayer({ id: "canopy-core", type: "circle", source: "canopies", paint: { "circle-radius": 3.3, "circle-color": "#176440", "circle-stroke-width": 1, "circle-stroke-color": "#eaf6ec" } });
-      map.addLayer({ id: "canopy-glint", type: "circle", source: "canopies", paint: { "circle-radius": 0.9, "circle-color": "#dff4e5" } });
+      // Tree shade is deliberately a soft light-green pool, separate from the
+      // cooler charcoal geometry used for building shadows above.
+      map.addLayer({ id: "canopy-shade", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 16, 8, 32], "circle-color": "#88cf9d", "circle-opacity": 0.31, "circle-blur": 0.96 } });
+      map.addImage("tree-marker", createTreeMarker(), { pixelRatio: 2 });
+      map.addLayer({ id: "tree-marker", type: "symbol", source: "canopies", layout: { "icon-image": "tree-marker", "icon-size": ["interpolate", ["linear"], ["zoom"], 14, 0.42, 16, 0.6], "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-pitch-alignment": "viewport", "icon-rotation-alignment": "viewport" } });
       map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour())) });
       map.addLayer({ id: "fastest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "fastest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#d68a43", "line-width": 4, "line-opacity": 0.82 } });
       map.addLayer({ id: "coolest-route-outline", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.92 } });
