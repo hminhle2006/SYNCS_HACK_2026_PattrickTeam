@@ -64,9 +64,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
+# Vite moves to the next free port when 5173 is taken -- by a stale dev server,
+# another project, anything. With an exact-match allowlist every request from
+# the new port is then rejected as a CORS violation, and the frontend silently
+# falls back to hardcoded demo numbers: the app looks like it works while
+# showing fiction. Matching any loopback port removes that whole failure mode.
+# This is a localhost-only pattern, so it grants nothing to a remote origin.
+LOCALHOST_ORIGIN_PATTERN = r"http://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_ORIGIN],
+    allow_origin_regex=LOCALHOST_ORIGIN_PATTERN,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
