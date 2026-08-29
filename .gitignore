@@ -58,3 +58,8 @@ coverage/
 .nyc_output/
 htmlcov/
 .coverage
+
+# Lane B: raw fetch caches are large and regenerable -- don't commit.
+# The computed deliverables (segments.parquet, shadows_*.geojson) DO get
+# committed so Lane C isn't blocked on re-running the pipeline.
+backend/cache/*.pkl
