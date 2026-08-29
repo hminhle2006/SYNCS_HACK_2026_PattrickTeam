@@ -12,3 +12,8 @@ pvlib==0.13.0
 requests==2.32.4
 pytest==8.4.1
 httpx==0.28.1
+
+# Optional: only needed to regenerate the validation figures in
+# backend/geo/validate.py. The app runs without them.
+# matplotlib>=3.9
+# contextily>=1.6

@@ -160,14 +160,16 @@ Measured limitations, from the data-quality tally the pipeline records:
 
 ## Team and contributions
 
-This table must be updated continuously and checked against Git history before submission.
-
 | Member | Role and contribution |
 |---|---|
-| Duc Anh Luong | Lane A: shared contracts and API schemas, repository scaffold, `scripts/run_pipeline.py` integration check, release coordination, README and pitch support |
-| Hieu Minh Le | Lane B: data acquisition (`backend/data/`), solar geometry, shadow casting and segment exposure (`backend/geo/`), the 30,670-edge exposure cache, UV dose model, and shadow/UV test suites. Directed and reviewed the Lane C backend work |
-| phibichubi | Lane D: React map interface, live navigation UI, MapLibre layers and the Vite worker fix that unblocked vector-tile rendering |
-| _(fourth member — replace or delete this row before submitting)_ | |
+| Duc Anh Luong | **Lane A — architecture and integration.** Shared API contract, cache format and file-ownership boundaries that let four branches merge with almost no conflict. Study area and demo journey, pinned dependencies, and `scripts/run_pipeline.py`, the integration check that gates each lane's handoff. |
+| Hieu Minh Le | **Lane B — data and shadow geometry.** Source acquisition (10,479 building footprints, 23,655 street trees, the walk network), typology-informed height estimation, solar position, shadow casting and per-segment exposure. Produced the 30,670-segment hourly exposure table the product runs on, parallelised the pipeline from 19 minutes to 3, and added the live UV index and erythemal dose model. |
+| Tuan Minh Nguyen | **Lane C — routing and API.** Walk-graph builder, the shade-weighted cost function blending travel time against sun exposure, the Dijkstra search producing the fastest/coolest pair, and the FastAPI surface with its stable error contract and UV endpoints. Routes return in ~170 ms over the full graph. |
+| Quang Minh Nguyen | **Lane D — frontend and interface design.** The entire UI: MapLibre map with both route overlays and live tree canopy, route comparison cards, UV dose panel, time-of-day controls, destination search, and the visual design language. |
+
+The demo video, pitch and project narrative were made collaboratively by all four members.
+
+We used AI coding assistance (Claude) throughout, most heavily in Lane B's geometry pipeline and Lane C's routing. Architecture, problem framing and final code were owned and reviewed by the members above. Some Lane C commits carry the author name "Claude" because of a misconfigured Git identity; Tuan Minh Nguyen is the author of that work.
 
 ## Credits and third-party material
 

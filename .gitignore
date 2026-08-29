@@ -25,11 +25,22 @@ frontend/dist/
 .vscode/
 .idea/
 # Generated pipeline caches
-cache/
-**/cache/*
+/cache/
+**/cache/*.pkl
+**/cache/*.log
 !**/cache/.gitkeep
 *.parquet
 *.geojson
 
 # Lane B handoff bundle: 78 MB of generated data for teammates, not source.
 handoff/
+
+# --- committed so a fresh clone behaves exactly like a dev machine ---------
+# The exposure table and shadow overlays are generated, but regenerating them
+# needs a ~3 minute pipeline run against Overpass, a free public API whose
+# latency we measured anywhere from 5 seconds to a hard timeout. 22 MB in the
+# repo is a fair trade for `git clone` producing a working app.
+# The raw OSM/tree pickles stay out: large, regenerable, and only needed to
+# re-run the pipeline itself.
+!backend/cache/segments.parquet
+!backend/cache/shadows_*.geojson

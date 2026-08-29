@@ -393,10 +393,24 @@ function App() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    map.getSource("routes")?.setData(routeFeatures(routeData));
-    map.getSource("shadows")?.setData(shadowData);
-    map.getSource("endpoints")?.setData(endpointFeatures(origin, destinationPlace));
+    if (!map) return;
+
+    // Do NOT bail out while the style is still loading. This effect only
+    // re-runs when its data changes, so an update that lands mid-load is
+    // dropped for good and the map keeps its placeholder layer -- which is why
+    // the real shadow overlay never appeared. Defer to the next idle instead.
+    const apply = () => {
+      map.getSource("routes")?.setData(routeFeatures(routeData));
+      map.getSource("shadows")?.setData(shadowData);
+      map.getSource("endpoints")?.setData(endpointFeatures(origin, destinationPlace));
+    };
+
+    if (map.isStyleLoaded()) {
+      apply();
+      return;
+    }
+    map.once("idle", apply);
+    return () => map.off("idle", apply);
   }, [routeData, shadowData, origin, destinationPlace]);
 
   useEffect(() => {

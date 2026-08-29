@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import geopandas as gpd
-import matplotlib.pyplot as plt
 
 CACHE_DIR = Path(__file__).resolve().parents[1] / "cache"
 CRS_WEB = "EPSG:3857"
@@ -27,7 +26,12 @@ def validation_figure(
     Default centre is Martin Place / Pitt St -- dense towers, long shadows,
     and somewhere anyone in the room can identify from the aerial alone.
     """
+    # matplotlib and contextily are imported here rather than at module level:
+    # this file only builds the validation figure for the slide deck, and
+    # neither package is needed to run the app. Keeping them lazy means a
+    # fresh `pip install -r requirements.txt` does not have to carry them.
     import contextily as cx
+    import matplotlib.pyplot as plt
 
     shadows = gpd.read_file(CACHE_DIR / f"shadows_{hour}.geojson").to_crs(CRS_WEB)
     focus = (
