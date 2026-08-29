@@ -103,6 +103,16 @@ async function fetchTrees(signal) {
   return response.json();
 }
 
+function mapCanopySample(collection) {
+  // The study-area cache can contain thousands of street trees in one view.
+  // The full shade overlay remains visible; this sparse marker set keeps the
+  // walking route itself easy to read.
+  return {
+    ...collection,
+    features: collection.features.filter((_, index) => index % 3 === 0),
+  };
+}
+
 function App() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
@@ -112,6 +122,7 @@ function App() {
   const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour()));
   const [shadowData, setShadowData] = useState(() => demoShadows(serviceHour()));
   const [canopyData, setCanopyData] = useState(demoCanopies);
+  const canopyDataRef = useRef(demoCanopies);
   const [isLoading, setIsLoading] = useState(true);
   const [isUsingDemoData, setIsUsingDemoData] = useState(true);
   const [serviceMessage, setServiceMessage] = useState("Preparing the demo route.");
@@ -141,11 +152,11 @@ function App() {
         });
       map.addSource("shadows", { type: "geojson", data: demoShadows(serviceHour()) });
       map.addLayer({ id: "shadow-fill", type: "fill", source: "shadows", paint: { "fill-color": "#3e5257", "fill-opacity": 0.19, "fill-antialias": true } });
-      map.addSource("canopies", { type: "geojson", data: demoCanopies });
-      map.addLayer({ id: "canopy-shade", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 13, 8, 28], "circle-color": "#4f9b68", "circle-opacity": 0.16, "circle-blur": 0.7 } });
-      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 8, "circle-color": "#2d8051", "circle-opacity": 0.26 } });
-      map.addLayer({ id: "canopy-core", type: "circle", source: "canopies", paint: { "circle-radius": 4.5, "circle-color": "#176440", "circle-stroke-width": 1.5, "circle-stroke-color": "#eaf6ec" } });
-      map.addLayer({ id: "canopy-glint", type: "circle", source: "canopies", paint: { "circle-radius": 1.5, "circle-color": "#dff4e5" } });
+      map.addSource("canopies", { type: "geojson", data: canopyDataRef.current });
+      map.addLayer({ id: "canopy-shade", type: "circle", source: "canopies", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "crown_radius_m"], 2, 11, 8, 22], "circle-color": "#4f9b68", "circle-opacity": 0.12, "circle-blur": 0.86 } });
+      map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 6, "circle-color": "#4b9a62", "circle-opacity": 0.2 } });
+      map.addLayer({ id: "canopy-core", type: "circle", source: "canopies", paint: { "circle-radius": 3.3, "circle-color": "#176440", "circle-stroke-width": 1, "circle-stroke-color": "#eaf6ec" } });
+      map.addLayer({ id: "canopy-glint", type: "circle", source: "canopies", paint: { "circle-radius": 0.9, "circle-color": "#dff4e5" } });
       map.addSource("routes", { type: "geojson", data: routeFeatures(demoRouteResponse(serviceHour())) });
       map.addLayer({ id: "fastest-route", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "fastest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#d68a43", "line-width": 4, "line-opacity": 0.82 } });
       map.addLayer({ id: "coolest-route-outline", type: "line", source: "routes", filter: ["==", ["get", "routeType"], "coolest"], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": 10, "line-opacity": 0.92 } });
@@ -177,13 +188,14 @@ function App() {
   useEffect(() => {
     const controller = new AbortController();
     fetchTrees(controller.signal)
-      .then((trees) => { if (trees.features?.length) setCanopyData(trees); })
+      .then((trees) => { if (trees.features?.length) setCanopyData(mapCanopySample(trees)); })
       .catch(() => { /* The small fallback set keeps the map legible offline. */ });
     return () => controller.abort();
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
+    canopyDataRef.current = canopyData;
     if (!map || !map.isStyleLoaded()) return;
     map.getSource("routes")?.setData(routeFeatures(routeData));
     map.getSource("shadows")?.setData(shadowData);
