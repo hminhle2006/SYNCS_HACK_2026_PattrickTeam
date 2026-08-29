@@ -339,6 +339,9 @@ function App() {
   const [destinationPlace, setDestinationPlace] = useState(DEFAULT_DESTINATION);
   const [livePosition, setLivePosition] = useState(null);
   const [isTracking, setIsTracking] = useState(false);
+  // The panel is tall enough to bury the map on a laptop and swallow it whole
+  // on a phone. Collapsing leaves the headline and hands the map back.
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [hourOverride, setHourOverride] = useState(null);
   const [shadePreference, setShadePreference] = useState(0.8);
   const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour(), 0.8));
@@ -548,8 +551,15 @@ function App() {
     <section className="route-key" aria-label="Map legend"><span><i className="route-swatch fastest" aria-hidden="true" />Fastest</span><span><i className="route-swatch coolest" aria-hidden="true" />More shade</span><span><i className="tree-swatch" aria-hidden="true" />Canopy</span></section>
     <button className={`tracking-button ${isTracking ? "is-active" : ""}`} type="button" onClick={toggleTracking}><span className="tracking-dot" aria-hidden="true" />{isTracking ? "Pause live tracking" : "Start live tracking"}</button>
 
-    <section className="navigation-panel" aria-label="Live route details">
-      <div className="sheet-handle" aria-hidden="true" />
+    <section className={`navigation-panel ${isPanelCollapsed ? "is-collapsed" : ""}`} aria-label="Live route details">
+      <button
+        type="button"
+        className="sheet-handle"
+        onClick={() => setIsPanelCollapsed((v) => !v)}
+        aria-expanded={!isPanelCollapsed}
+        aria-label={isPanelCollapsed ? "Expand route details" : "Collapse route details"}
+        title={isPanelCollapsed ? "Expand" : "Collapse"}
+      />
       <div className="sheet-heading">
         <div>
           <p className="panel-kicker">Shade route</p>

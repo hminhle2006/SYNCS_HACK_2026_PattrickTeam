@@ -266,3 +266,35 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ---- collapsible route panel ------------------------------------------- */
+/* Expanded, the panel runs to ~537px and covers most of the map -- nearly all
+   of it on a phone. The handle already looked like a drag affordance but did
+   nothing; it is now a real toggle.
+
+   Collapsing is done by clamping the PANEL, not by hiding each child. The
+   per-child approach lost a specificity fight against the base layout rules
+   and silently did nothing; one max-height on the container cannot. */
+
+.sheet-handle {
+  display: block;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.15s ease, width 0.2s ease;
+}
+
+.sheet-handle:hover { background: #8fada2; width: 54px; }
+.sheet-handle:focus-visible { outline: 2px solid #157167; outline-offset: 3px; }
+
+.navigation-panel {
+  max-height: 78vh;
+  overflow: hidden;
+  transition: max-height 0.28s ease, padding-bottom 0.28s ease;
+}
+
+/* Handle plus headline only. */
+.navigation-panel.is-collapsed {
+  max-height: 104px;
+  padding-bottom: 8px;
+}
