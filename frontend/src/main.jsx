@@ -89,6 +89,15 @@ async function fetchRoute(origin, hour, signal) {
   return response.json();
 }
 
+const shadowCache = new Map();
+
+async function fetchShadowsCached(hour, signal) {
+  if (shadowCache.has(hour)) return shadowCache.get(hour);
+  const data = await fetchShadows(hour, signal);
+  shadowCache.set(hour, data);
+  return data;
+}
+
 async function fetchShadows(hour, signal) {
   const response = await fetch(`${API_BASE_URL}/api/shadows?hour=${hour}`, { signal });
   if (!response.ok) throw new Error("Shadow service is unavailable.");
@@ -99,6 +108,9 @@ function App() {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const [now, setNow] = useState(() => new Date());
+  // null means "follow the clock". Any number means the user has scrubbed the
+  // slider and we show that hour instead until they hand control back.
+  const [scrubbedHour, setScrubbedHour] = useState(null);
   const [position, setPosition] = useState(DEMO_ORIGIN);
   const [isTracking, setIsTracking] = useState(false);
   const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour()));
@@ -106,7 +118,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUsingDemoData, setIsUsingDemoData] = useState(true);
   const [serviceMessage, setServiceMessage] = useState("Preparing the demo route.");
-  const hour = serviceHour(now);
+  const liveHour = serviceHour(now);
+  const hour = scrubbedHour ?? liveHour;
+  const isScrubbing = scrubbedHour !== null;
   const fastestRoute = routeData.routes.find((route) => route.type === "fastest");
   const coolestRoute = routeData.routes.find((route) => route.type === "coolest");
   const shadeCoverage = Math.round((1 - coolestRoute.exposed_frac) * 100);
@@ -123,8 +137,8 @@ function App() {
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: "metric" }), "bottom-right");
     map.on("load", () => {
       map.addSource("shadows", { type: "geojson", data: demoShadows(serviceHour()) });
-      map.addLayer({ id: "shadow-fill", type: "fill", source: "shadows", paint: { "fill-color": "#4b6870", "fill-opacity": 0.24 } });
-      map.addLayer({ id: "shadow-outline", type: "line", source: "shadows", paint: { "line-color": "#7ba1a1", "line-width": 1, "line-opacity": 0.38 } });
+      map.addLayer({ id: "shadow-fill", type: "fill", source: "shadows", paint: { "fill-color": "#3d5a63", "fill-opacity": 0.34 } });
+      map.addLayer({ id: "shadow-outline", type: "line", source: "shadows", paint: { "line-color": "#5d8189", "line-width": 1, "line-opacity": 0.5 } });
       map.addSource("canopies", { type: "geojson", data: demoCanopies });
       map.addLayer({ id: "canopy-halo", type: "circle", source: "canopies", paint: { "circle-radius": 11, "circle-color": "#5da47b", "circle-opacity": 0.12 } });
       map.addLayer({ id: "canopy-core", type: "circle", source: "canopies", paint: { "circle-radius": 4, "circle-color": "#34745a", "circle-stroke-width": 2, "circle-stroke-color": "#eaf6ee" } });
@@ -145,7 +159,7 @@ function App() {
     const debounce = window.setTimeout(async () => {
       setIsLoading(true);
       try {
-        const [nextRoutes, nextShadows] = await Promise.all([fetchRoute(position, hour, controller.signal), fetchShadows(hour, controller.signal).catch(() => demoShadows(hour))]);
+        const [nextRoutes, nextShadows] = await Promise.all([fetchRoute(position, hour, controller.signal), fetchShadowsCached(hour, controller.signal).catch(() => demoShadows(hour))]);
         if (controller.signal.aborted) return;
         setRouteData(nextRoutes); setShadowData(nextShadows); setIsUsingDemoData(false); setServiceMessage(isTracking ? "Live location is updating your route." : "Route estimate updated from the service.");
       } catch {
@@ -158,10 +172,26 @@ function App() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    map.getSource("routes")?.setData(routeFeatures(routeData));
-    map.getSource("shadows")?.setData(shadowData);
-    map.getSource("endpoints")?.setData(endpoints(position));
+    if (!map) return;
+
+    // Returning early when the style is still loading silently DROPS the
+    // update: this effect only re-runs when its data changes, so the payload
+    // that arrived during style load is never applied and the map keeps its
+    // placeholder layer forever. Shadow data resolves fast (and is cached),
+    // so it routinely lost this race -- which is why the real overlay never
+    // appeared. Defer to the next idle instead of giving up.
+    const apply = () => {
+      map.getSource("routes")?.setData(routeFeatures(routeData));
+      map.getSource("shadows")?.setData(shadowData);
+      map.getSource("endpoints")?.setData(endpoints(position));
+    };
+
+    if (map.isStyleLoaded()) {
+      apply();
+      return;
+    }
+    map.once("idle", apply);
+    return () => map.off("idle", apply);
   }, [routeData, shadowData, position]);
 
   useEffect(() => {
@@ -190,8 +220,34 @@ function App() {
     <button className={`tracking-button ${isTracking ? "is-active" : ""}`} type="button" onClick={toggleTracking}><span className="tracking-dot" aria-hidden="true" />{isTracking ? "Pause live tracking" : "Start live tracking"}</button>
     <section className="navigation-panel" aria-label="Live route details">
       <div className="sheet-handle" aria-hidden="true" />
-      <div className="sheet-heading"><div><p className="panel-kicker">Live shade route</p><h2>{shadeCoverage}% <span>shaded</span></h2><p className="panel-subtitle">{isDaylight(now) ? `Sun estimate for ${formatClock(now)}` : `Outside daylight — previewing ${formatHourLabel(hour)}`}</p></div><div className="route-duration"><strong>{formatMinutes(coolestRoute.duration_s)}</strong><span>{Math.round(coolestRoute.distance_m / 100) / 10} km</span></div></div>
+      <div className="sheet-heading"><div><p className="panel-kicker">Live shade route</p><h2>{shadeCoverage}% <span>shaded</span></h2><p className="panel-subtitle">{isScrubbing ? `Shade at ${formatHourLabel(hour)}` : isDaylight(now) ? `Sun estimate for ${formatClock(now)}` : `Outside daylight — previewing ${formatHourLabel(hour)}`}</p></div><div className="route-duration"><strong>{formatMinutes(coolestRoute.duration_s)}</strong><span>{Math.round(coolestRoute.distance_m / 100) / 10} km</span></div></div>
       <div className="route-cards" aria-label="Route comparison"><article className="route-card recommended"><div className="route-card-icon" aria-hidden="true">☂</div><div className="route-card-copy"><p>More shade</p><strong>{addedMinutes} longer · {Math.round(routeData.comparison.exposure_reduction_pct)}% less sun</strong><div className="exposure-meter" aria-label={`${shadeCoverage}% of the recommended route is shaded`}><span style={{ width: `${shadeCoverage}%` }} /></div></div><span className="recommended-tag">Best match</span></article><article className="route-card"><div className="route-card-icon warm" aria-hidden="true">☀</div><div className="route-card-copy"><p>Fastest</p><strong>{formatMinutes(fastestRoute.duration_s)} · more sun</strong><div className="exposure-meter warm-meter" aria-label="The fastest route has higher direct sun exposure"><span /></div></div></article></div>
+      <div className="time-scrubber">
+        <div className="scrubber-head">
+          <span>Time of day</span>
+          <strong>{formatHourLabel(hour)}</strong>
+        </div>
+        <input
+          className="scrubber-input"
+          type="range"
+          min={FIRST_LIT_HOUR}
+          max={LAST_LIT_HOUR}
+          step={1}
+          value={hour}
+          onChange={(event) => setScrubbedHour(Number(event.target.value))}
+          aria-label="Time of day for the shade model"
+        />
+        <div className="scrubber-scale" aria-hidden="true">
+          <span>{formatHourLabel(FIRST_LIT_HOUR)}</span>
+          <span>{formatHourLabel(12)}</span>
+          <span>{formatHourLabel(LAST_LIT_HOUR)}</span>
+        </div>
+        {isScrubbing ? (
+          <button type="button" className="scrubber-reset" onClick={() => setScrubbedHour(null)}>
+            Back to now
+          </button>
+        ) : null}
+      </div>
       <div className="live-strip"><span className={`live-indicator ${isTracking ? "is-live" : ""}`} aria-hidden="true" /> <strong>{isTracking ? "Tracking your location" : "Demo navigation"}</strong><span>{isLoading ? "Updating…" : "Refreshes as you move"}</span></div>
       <p className={`service-note ${isUsingDemoData ? "is-demo" : ""}`} role="status">{serviceMessage}</p>
     </section>

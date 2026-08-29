@@ -79,3 +79,101 @@ h1 { margin: 1px 0 0; color: #173c39; font-family: Fraunces, Georgia, serif; fon
 .maplibregl-ctrl-attrib { font-family: "DM Sans", sans-serif; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @keyframes location-pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(33, 161, 111, 0.14); } 50% { box-shadow: 0 0 0 8px rgba(33, 161, 111, 0); } }
+
+/* ---- time-of-day scrubber -------------------------------------------- */
+/* Range is 07:00-17:00 deliberately: outside that the sun is below the
+   horizon, every segment reads as fully shaded, and both routes score the
+   same. Letting the handle reach those hours would show "0% less sun". */
+
+.time-scrubber {
+  margin-top: 0.9rem;
+  padding: 0.85rem 1rem 0.7rem;
+  border-radius: 14px;
+  background: rgba(21, 113, 103, 0.06);
+  border: 1px solid rgba(21, 113, 103, 0.14);
+}
+
+.scrubber-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.scrubber-head span {
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(15, 46, 45, 0.62);
+}
+
+.scrubber-head strong {
+  font-size: 1.05rem;
+  color: #0f2e2d;
+  font-variant-numeric: tabular-nums;
+}
+
+.scrubber-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  /* Warm at midday, cool at the ends -- the gradient reads as the sun's arc. */
+  background: linear-gradient(90deg, #157167 0%, #d68a43 50%, #157167 100%);
+  outline: none;
+  cursor: pointer;
+}
+
+.scrubber-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #157167;
+  box-shadow: 0 2px 6px rgba(15, 46, 45, 0.28);
+  cursor: grab;
+}
+
+.scrubber-input::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #157167;
+  box-shadow: 0 2px 6px rgba(15, 46, 45, 0.28);
+  cursor: grab;
+}
+
+.scrubber-input:focus-visible {
+  box-shadow: 0 0 0 3px rgba(21, 113, 103, 0.35);
+}
+
+.scrubber-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  color: rgba(15, 46, 45, 0.5);
+}
+
+.scrubber-reset {
+  margin-top: 0.6rem;
+  width: 100%;
+  padding: 0.4rem;
+  border-radius: 9px;
+  border: 1px solid rgba(21, 113, 103, 0.3);
+  background: rgba(255, 255, 255, 0.85);
+  color: #157167;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scrubber-reset:hover {
+  background: #157167;
+  color: #ffffff;
+}
