@@ -44,6 +44,15 @@ function formatMinutes(seconds) {
   return `${Math.max(1, Math.round(seconds / 60))} min`;
 }
 
+function formatBurnRisk(minutes) {
+  return minutes === null || minutes === undefined ? "No burn risk" : `${Math.round(minutes)} min`;
+}
+
+function formatUvDoseChange(percent) {
+  const rounded = Math.round(percent);
+  return rounded < 0 ? `${Math.abs(rounded)}% more UV dose` : `${rounded}% lower UV dose`;
+}
+
 function demoRouteResponse(hour) {
   const intensity = 1 - Math.min(Math.abs(hour - 14) / 8, 0.72);
   const reduction = Math.round(42 + intensity * 29);
@@ -55,6 +64,19 @@ function demoRouteResponse(hour) {
     ],
     comparison: { extra_distance_m: 220, extra_duration_s: addedTime, exposure_reduction_m: 630 * reduction / 100, exposure_reduction_pct: reduction },
     meta: { hour, shade_preference: 0.8, timezone: "Australia/Sydney" },
+  };
+}
+
+function demoUvDose(hour) {
+  const daylight = hour >= FIRST_LIT_HOUR && hour <= LAST_LIT_HOUR;
+  return {
+    uv: { hour, uv_index: daylight ? 5.4 : 0, source: "clear-sky model", is_live: false, observed_at: null },
+    fastest_sed: daylight ? 0.67 : 0,
+    coolest_sed: daylight ? 0.59 : 0,
+    uv_reduction_sed: daylight ? 0.08 : 0,
+    uv_reduction_pct: daylight ? 11.9 : 0,
+    fastest_minutes_to_burn: daylight ? 43 : null,
+    coolest_minutes_to_burn: daylight ? 49 : null,
   };
 }
 
@@ -84,10 +106,22 @@ function endpoints(origin) {
   ] };
 }
 
-async function fetchRoute(origin, hour, signal) {
-  const response = await fetch(`${API_BASE_URL}/api/route`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin, destination: DEMO_DESTINATION, hour, shade_preference: 0.8 }), signal });
+function routeRequest(origin, hour) {
+  return { origin, destination: DEMO_DESTINATION, hour, shade_preference: 0.8 };
+}
+
+async function postRouteResource(path, origin, hour, signal) {
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(routeRequest(origin, hour)), signal });
   if (!response.ok) throw new Error("Route service is unavailable.");
   return response.json();
+}
+
+function fetchRoute(origin, hour, signal) {
+  return postRouteResource("/api/route", origin, hour, signal);
+}
+
+function fetchUvDose(origin, hour, signal) {
+  return postRouteResource("/api/uv-dose", origin, hour, signal);
 }
 
 async function fetchShadows(hour, signal) {
@@ -121,6 +155,7 @@ function App() {
   const [isTracking, setIsTracking] = useState(false);
   const [routeData, setRouteData] = useState(() => demoRouteResponse(serviceHour()));
   const [shadowData, setShadowData] = useState(() => demoShadows(serviceHour()));
+  const [uvDose, setUvDose] = useState(() => demoUvDose(serviceHour()));
   const [canopyData, setCanopyData] = useState(demoCanopies);
   const canopyDataRef = useRef(demoCanopies);
   const [isLoading, setIsLoading] = useState(true);
@@ -174,12 +209,16 @@ function App() {
     const debounce = window.setTimeout(async () => {
       setIsLoading(true);
       try {
-        const [nextRoutes, nextShadows] = await Promise.all([fetchRoute(position, hour, controller.signal), fetchShadows(hour, controller.signal).catch(() => demoShadows(hour))]);
+        const [nextRoutes, nextShadows, nextUvDose] = await Promise.all([
+          fetchRoute(position, hour, controller.signal),
+          fetchShadows(hour, controller.signal).catch(() => demoShadows(hour)),
+          fetchUvDose(position, hour, controller.signal).catch(() => demoUvDose(hour)),
+        ]);
         if (controller.signal.aborted) return;
-        setRouteData(nextRoutes); setShadowData(nextShadows); setIsUsingDemoData(false); setServiceMessage(isTracking ? "Live location is updating your route." : "Route estimate updated from the service.");
+        setRouteData(nextRoutes); setShadowData(nextShadows); setUvDose(nextUvDose); setIsUsingDemoData(false); setServiceMessage(isTracking ? "Live location is updating your route." : "Route estimate updated from the service.");
       } catch {
         if (controller.signal.aborted) return;
-        setRouteData(demoRouteResponse(hour)); setShadowData(demoShadows(hour)); setIsUsingDemoData(true); setServiceMessage(isTracking ? "Outside the demo area — showing the prepared Sydney route." : "Showing the prepared Sydney route.");
+        setRouteData(demoRouteResponse(hour)); setShadowData(demoShadows(hour)); setUvDose(demoUvDose(hour)); setIsUsingDemoData(true); setServiceMessage(isTracking ? "Outside the demo area — showing the prepared Sydney route." : "Showing the prepared Sydney route.");
       } finally { if (!controller.signal.aborted) setIsLoading(false); }
     }, 350);
     return () => { controller.abort(); window.clearTimeout(debounce); };
@@ -231,6 +270,7 @@ function App() {
       <div className="sheet-handle" aria-hidden="true" />
       <div className="sheet-heading"><div><p className="panel-kicker">Live shade route</p><h2>{shadeCoverage}% <span>shaded</span></h2><p className="panel-subtitle">{isDaylight(now) ? `Sun estimate for ${formatClock(now)}` : `Outside daylight — previewing ${formatHourLabel(hour)}`}</p></div><div className="route-duration"><strong>{formatMinutes(coolestRoute.duration_s)}</strong><span>{Math.round(coolestRoute.distance_m / 100) / 10} km</span></div></div>
       <div className="route-cards" aria-label="Route comparison"><article className="route-card recommended"><div className="route-card-icon" aria-hidden="true">☂</div><div className="route-card-copy"><p>More shade</p><strong>{addedMinutes} longer · {Math.round(routeData.comparison.exposure_reduction_pct)}% less sun</strong><div className="exposure-meter" aria-label={`${shadeCoverage}% of the recommended route is shaded`}><span style={{ width: `${shadeCoverage}%` }} /></div></div><span className="recommended-tag">Best match</span></article><article className="route-card"><div className="route-card-icon warm" aria-hidden="true">☀</div><div className="route-card-copy"><p>Fastest</p><strong>{formatMinutes(fastestRoute.duration_s)} · more sun</strong><div className="exposure-meter warm-meter" aria-label="The fastest route has higher direct sun exposure"><span /></div></div></article></div>
+      <section className="uv-summary" aria-label="UV dose estimate"><div><p>UV {uvDose.uv.uv_index.toFixed(1)} <span className={`uv-badge ${uvDose.uv.is_live ? "is-live" : ""}`}>{uvDose.uv.is_live ? "Live" : "Estimated"}</span></p><strong>{formatBurnRisk(uvDose.fastest_minutes_to_burn)} <i>→</i> {formatBurnRisk(uvDose.coolest_minutes_to_burn)}</strong><small>Time to burn · fair skin</small></div><p className="uv-change">{formatUvDoseChange(uvDose.uv_reduction_pct)}</p></section>
       <div className="live-strip"><span className={`live-indicator ${isTracking ? "is-live" : ""}`} aria-hidden="true" /> <strong>{isTracking ? "Tracking your location" : "Demo navigation"}</strong><span>{isLoading ? "Updating…" : "Refreshes as you move"}</span></div>
       <p className={`service-note ${isUsingDemoData ? "is-demo" : ""}`} role="status">{serviceMessage}</p>
     </section>
