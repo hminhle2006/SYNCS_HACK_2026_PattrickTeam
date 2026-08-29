@@ -28,6 +28,57 @@ CRS_METRES = "EPSG:7856"
 
 LEVEL_HEIGHT_M = 3.1
 DEFAULT_BUILDING_HEIGHT_M = 10.0
+# Typology-informed heights, in metres, for footprints with no height and no
+# level count. Derived from what is actually in this bbox: of 5,757 defaulted
+# buildings, 1,180 are houses, 828 Sydney terraces, and a long tail of sheds
+# and garages that a flat 10 m default was modelling as three-storey blocks.
+#
+# These are still estimates -- but an estimate that knows a garage from an
+# office is a different class of wrong from one that does not. Untyped
+# `building=yes` deliberately keeps the generic default: we have no
+# information there, and inventing a number would be tuning rather than
+# using evidence.
+BUILDING_TYPE_HEIGHTS: dict[str, float] = {
+    # Low-rise residential -- the bulk of this study area
+    "house": 6.0,
+    "detached": 6.0,
+    "semidetached_house": 6.5,
+    "terrace": 7.0,
+    "bungalow": 4.5,
+    "residential": 8.0,
+    # Medium-density residential
+    "apartments": 12.0,
+    "flats": 10.0,
+    "dormitory": 12.0,
+    # Ancillary structures -- badly served by a 10 m default
+    "garage": 3.0,
+    "garages": 3.0,
+    "shed": 3.0,
+    "hut": 3.0,
+    "carport": 2.5,
+    "roof": 3.0,
+    "service": 3.0,
+    "kiosk": 3.0,
+    "toilets": 3.0,
+    # Commercial and civic
+    "retail": 6.0,
+    "commercial": 10.0,
+    "office": 15.0,
+    "hotel": 15.0,
+    "civic": 10.0,
+    "public": 10.0,
+    "industrial": 8.0,
+    "warehouse": 8.0,
+    "school": 8.0,
+    "university": 15.0,
+    "college": 12.0,
+    "hospital": 15.0,
+    "church": 12.0,
+    "chapel": 8.0,
+    "train_station": 8.0,
+    "transportation": 8.0,
+}
+
 DEFAULT_CROWN_RADIUS_M = 4.0
 DEFAULT_TREE_HEIGHT_M = 8.0
 
@@ -126,6 +177,13 @@ def resolve_height(row) -> float:
     if levels is not None:
         FALLBACKS["levels_x_3.1"] += 1
         return levels * LEVEL_HEIGHT_M
+
+    kind = row.get("building")
+    if isinstance(kind, str):
+        typical = BUILDING_TYPE_HEIGHTS.get(kind.strip().lower())
+        if typical is not None:
+            FALLBACKS["typology"] += 1
+            return typical
 
     FALLBACKS["default_10m"] += 1
     return DEFAULT_BUILDING_HEIGHT_M
