@@ -68,6 +68,22 @@ def segment_exposure(
     return pd.Series(exposed, index=segments.index, name="exposed_frac")
 
 
+def _flatten_osm_attr(value) -> str:
+    """Collapse an osmnx attribute to a plain string.
+
+    Merged edges carry lists; unnamed ways carry NaN. NaN is not None, so a
+    None check lets str(NaN) through and every unnamed footpath ends up
+    literally named "nan" in the UI.
+    """
+    if isinstance(value, (list, tuple)):
+        parts = [str(x) for x in value if x is not None and str(x) != "nan"]
+        return "; ".join(dict.fromkeys(parts))
+    if value is None:
+        return ""
+    text = str(value)
+    return "" if text in ("nan", "None", "<NA>") else text
+
+
 def graph_to_segments(graph) -> gpd.GeoDataFrame:
     """Edges of an osmnx walk graph as a segment table in metres."""
     import osmnx as ox
@@ -85,10 +101,7 @@ def graph_to_segments(graph) -> gpd.GeoDataFrame:
     # failure only surfaces at write time -- after the whole pipeline has run.
     for col in ("name", "highway"):
         if col in segments.columns:
-            segments[col] = segments[col].map(
-                lambda v: "; ".join(str(x) for x in v) if isinstance(v, (list, tuple)) else
-                ("" if v is None else str(v))
-            )
+            segments[col] = segments[col].map(_flatten_osm_attr)
     return segments
 
 
